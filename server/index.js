@@ -41,15 +41,16 @@ function requireLogin(req, res, next) {
 app.post('/login', tailscaleOnly, async (req, res) => {
   const { username, password } = req.body;
   try {
-    const r = await axios.post(`${AUTH_SERVICE_URL}/api/login`, { username, password });
+    const r = await axios.post(`${AUTH_SERVICE_URL}/api/auth/login`, { username, password });
     if (r.data.success) {
-      req.session.userId = r.data.user?.username || username;
+      req.session.userId = r.data.username || username;
       req.session.username = req.session.userId;
       res.json({ ok: true });
     } else {
       res.status(401).json({ error: 'Invalid credentials' });
     }
-  } catch {
+  } catch (err) {
+    if (err?.response?.status === 401) return res.status(401).json({ error: 'Invalid credentials' });
     res.status(503).json({ error: 'Auth service unavailable' });
   }
 });
