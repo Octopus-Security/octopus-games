@@ -68,11 +68,13 @@ export function launchSudoku(hubEl: HTMLElement, _user: User): void {
   let puzzle: Board = emptyBoard();
   let solution: Board = emptyBoard();
   let userBoard: Board = emptyBoard();
+  let notesBoard: Set<number>[][] = [];
   let selected: [number, number] | null = null;
   let mistakes = 0;
   let seconds = 0;
   let timerInterval = 0;
   let complete = false;
+  let notesMode = false;
   const given = new Set<string>();
 
   const wrapper = document.createElement('div');
@@ -95,11 +97,13 @@ export function launchSudoku(hubEl: HTMLElement, _user: User): void {
     <div class="flex-1 flex items-center justify-center p-4">
       <div class="flex flex-col items-center gap-6">
         <div id="board" class="select-none"></div>
-        <div id="numpad" class="flex gap-2">
+        <div id="numpad" class="flex gap-2 items-center">
           ${[1,2,3,4,5,6,7,8,9].map(n => `
             <button data-n="${n}" class="num-btn w-10 h-10 rounded-lg bg-gray-800 hover:bg-blue-600 border border-gray-700 text-white font-bold text-lg transition-colors">${n}</button>
           `).join('')}
           <button id="eraseBtn" class="w-10 h-10 rounded-lg bg-gray-800 hover:bg-red-700 border border-gray-700 text-gray-400 font-bold text-sm transition-colors">✕</button>
+          <div class="w-px h-8 bg-gray-700 mx-1"></div>
+          <button id="notesBtn" class="w-10 h-10 rounded-lg bg-gray-800 border border-gray-700 text-gray-400 font-bold text-sm transition-colors" title="Notes mode">✏️</button>
         </div>
       </div>
     </div>
@@ -119,21 +123,33 @@ export function launchSudoku(hubEl: HTMLElement, _user: User): void {
     puzzle = gen.puzzle;
     solution = gen.solution;
     userBoard = puzzle.map(row => [...row]) as Board;
+    notesBoard = Array.from({ length: 9 }, () => Array.from({ length: 9 }, () => new Set<number>()));
     selected = null;
     mistakes = 0;
     seconds = 0;
     complete = false;
+    notesMode = false;
     given.clear();
     for (let r = 0; r < 9; r++)
       for (let c = 0; c < 9; c++)
         if (puzzle[r][c] !== null) given.add(`${r},${c}`);
     wrapper.querySelector<HTMLElement>('#mistakes')!.textContent = '0';
     wrapper.querySelector<HTMLElement>('#timer')!.textContent = '0';
-    wrapper.querySelector<HTMLElement>('#banner')!.classList.add('hidden');
+    const banner = wrapper.querySelector<HTMLElement>('#banner')!;
+    banner.classList.add('hidden');
+    banner.style.display = '';
+    updateNotesBtn();
     timerInterval = window.setInterval(() => {
       if (!complete) { seconds++; wrapper.querySelector<HTMLElement>('#timer')!.textContent = String(seconds); }
     }, 1000);
     renderBoard();
+  }
+
+  function updateNotesBtn() {
+    const btn = wrapper.querySelector<HTMLElement>('#notesBtn')!;
+    btn.className = notesMode
+      ? 'w-10 h-10 rounded-lg bg-yellow-600 border border-yellow-500 text-white font-bold text-sm transition-colors'
+      : 'w-10 h-10 rounded-lg bg-gray-800 border border-gray-700 text-gray-400 font-bold text-sm transition-colors';
   }
 
   function renderBoard() {
@@ -162,11 +178,25 @@ export function launchSudoku(hubEl: HTMLElement, _user: User): void {
         else if (isRelated) bg = '#1e2d4a';
         if (isConflict) bg = '#450a0a';
 
+        const notes = notesBoard[r][c];
+        const showNotes = val === null && notes.size > 0;
         td.style.cssText = `width:48px;height:48px;text-align:center;vertical-align:middle;cursor:pointer;
           border-top:${borderT};border-left:${borderL};${borderB ? `border-bottom:${borderB};` : ''}${borderR ? `border-right:${borderR};` : ''}
-          background:${bg};font-size:22px;font-weight:${isGiven ? 'bold' : 'normal'};
-          color:${isConflict ? '#ef4444' : isGiven ? '#ffffff' : '#60a5fa'};`;
-        td.textContent = val !== null ? String(val) : '';
+          background:${bg};font-size:${showNotes ? '9px' : '22px'};font-weight:${isGiven ? 'bold' : 'normal'};
+          color:${isConflict ? '#ef4444' : isGiven ? '#ffffff' : '#60a5fa'};padding:${showNotes ? '2px' : '0'};`;
+        if (showNotes) {
+          const grid = document.createElement('div');
+          grid.style.cssText = 'display:grid;grid-template-columns:repeat(3,1fr);width:100%;height:100%;gap:0';
+          for (let n = 1; n <= 9; n++) {
+            const span = document.createElement('span');
+            span.style.cssText = 'font-size:9px;text-align:center;line-height:1;color:#9ca3af;display:flex;align-items:center;justify-content:center';
+            span.textContent = notes.has(n) ? String(n) : '';
+            grid.appendChild(span);
+          }
+          td.appendChild(grid);
+        } else {
+          td.textContent = val !== null ? String(val) : '';
+        }
         td.addEventListener('click', () => {
           if (!isGiven) { selected = [r, c]; renderBoard(); }
           else { selected = [r, c]; renderBoard(); }
@@ -182,8 +212,21 @@ export function launchSudoku(hubEl: HTMLElement, _user: User): void {
     if (!selected || complete) return;
     const [r, c] = selected;
     if (given.has(`${r},${c}`)) return;
-    if (n === null) { userBoard[r][c] = null; renderBoard(); return; }
+    if (n === null) {
+      userBoard[r][c] = null;
+      notesBoard[r][c].clear();
+      renderBoard();
+      return;
+    }
+    if (notesMode) {
+      if (userBoard[r][c] !== null) return;
+      if (notesBoard[r][c].has(n)) notesBoard[r][c].delete(n);
+      else notesBoard[r][c].add(n);
+      renderBoard();
+      return;
+    }
     userBoard[r][c] = n;
+    notesBoard[r][c].clear();
     if (n !== solution[r][c]) {
       mistakes++;
       wrapper.querySelector<HTMLElement>('#mistakes')!.textContent = String(mistakes);
@@ -205,7 +248,6 @@ export function launchSudoku(hubEl: HTMLElement, _user: User): void {
     wrapper.querySelector<HTMLElement>('#bannerEmoji')!.textContent = win ? '🏆' : '💔';
     wrapper.querySelector<HTMLElement>('#bannerText')!.textContent = win ? `Solved in ${seconds}s!` : 'Too many mistakes!';
     banner.classList.remove('hidden');
-    banner.style.display = 'flex';
   }
 
   wrapper.querySelector('#backBtn')!.addEventListener('click', () => {
@@ -219,6 +261,10 @@ export function launchSudoku(hubEl: HTMLElement, _user: User): void {
     btn.addEventListener('click', () => inputNumber(parseInt((btn as HTMLElement).dataset.n!)));
   });
   wrapper.querySelector('#eraseBtn')!.addEventListener('click', () => inputNumber(null));
+  wrapper.querySelector('#notesBtn')!.addEventListener('click', () => {
+    notesMode = !notesMode;
+    updateNotesBtn();
+  });
   wrapper.querySelectorAll('.diff-btn').forEach(btn => {
     btn.addEventListener('click', () => {
       difficulty = (btn as HTMLElement).dataset.diff!;
@@ -236,6 +282,7 @@ export function launchSudoku(hubEl: HTMLElement, _user: User): void {
     if (!wrapper.isConnected) { document.removeEventListener('keydown', onKey); return; }
     if (e.key >= '1' && e.key <= '9') inputNumber(parseInt(e.key));
     if (e.key === 'Backspace' || e.key === 'Delete' || e.key === '0') inputNumber(null);
+    if (e.key === 'n' || e.key === 'N') { notesMode = !notesMode; updateNotesBtn(); }
     if (!selected) return;
     const [r, c] = selected;
     if (e.key === 'ArrowUp' && r > 0) { selected = [r-1, c]; renderBoard(); }

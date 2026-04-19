@@ -3,6 +3,8 @@ import { launchOctopusPunch } from './games/octopus-punch/index';
 import { launchMinesweeper } from './games/minesweeper/index';
 import { launchSudoku } from './games/sudoku/index';
 import { launchBlackjack } from './games/blackjack/index';
+import { launchFrogger } from './games/frogger/index';
+import { launchGalaga } from './games/galaga/index';
 
 interface GameDef {
   slug: string;
@@ -50,6 +52,24 @@ const GAMES: GameDef[] = [
     category: 'Cards',
     available: true,
     launch: launchBlackjack,
+  },
+  {
+    slug: 'frogger',
+    title: 'Frogger',
+    description: 'Hop your frog across busy traffic and a river of logs to reach the goal.',
+    emoji: '🐸',
+    category: 'Arcade',
+    available: true,
+    launch: launchFrogger,
+  },
+  {
+    slug: 'galaga',
+    title: 'Galaga',
+    description: 'Defend Earth from waves of diving alien invaders. How far can you go?',
+    emoji: '👾',
+    category: 'Arcade',
+    available: true,
+    launch: launchGalaga,
   },
 ];
 
@@ -127,6 +147,7 @@ export function renderHub(user: User, onLogout: () => void): HTMLElement {
         Action: 'bg-orange-900/40 text-orange-400',
         Puzzle: 'bg-blue-900/40 text-blue-400',
         Cards: 'bg-green-900/40 text-green-400',
+        Arcade: 'bg-purple-900/40 text-purple-400',
       };
 
       card.innerHTML = `
