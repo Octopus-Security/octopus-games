@@ -1,0 +1,24 @@
+services:
+  octopus-games:
+    build: .
+    container_name: octopus-games
+    restart: unless-stopped
+    ports:
+      - "3013:3013"
+    environment:
+      - PORT=3013
+      - NODE_ENV=production
+      - SESSION_SECRET=${SESSION_SECRET}
+      - CORTEX_URL=http://octopus-cortex:3010
+      - AUTH_SERVICE_URL=http://octopus-auth:3002
+    volumes:
+      - games_data:/app/data
+    networks:
+      - octopus_network
+
+volumes:
+  games_data:
+
+networks:
+  octopus_network:
+    external: true
