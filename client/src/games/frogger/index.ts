@@ -1,8 +1,6 @@
 import type { User } from '../../auth';
 
 const W = 480, H = 560, CELL = 48;
-const COLS = W / CELL; // 10
-const ROWS = H / CELL; // ~11.6 → we'll use 11 rows (0..10), row 10 = start, row 0 = goal
 
 interface Lane {
   type: 'road' | 'water' | 'safe';
@@ -80,8 +78,6 @@ export function launchFrogger(hubEl: HTMLElement, _user: User): void {
 
   let lives = 3, score = 0, level = 1;
   let frogRow = 10, frogX = W / 2 - CELL / 2;
-  let frogOnLog = false;
-  let frogLogDx = 0;
   let objs: Obj[][] = [];
   let raf = 0;
   let lastTime = 0;
@@ -94,7 +90,6 @@ export function launchFrogger(hubEl: HTMLElement, _user: User): void {
     objs = LANES.map((_, i) => makeLaneObjs(i));
     frogRow = 10;
     frogX = W / 2 - CELL / 2;
-    frogOnLog = false;
     dead = false;
     reachedGoals.clear();
   }
@@ -137,7 +132,6 @@ export function launchFrogger(hubEl: HTMLElement, _user: User): void {
     }
     frogRow = 10;
     frogX = W / 2 - CELL / 2;
-    frogOnLog = false;
     dead = false;
   }
 
@@ -187,7 +181,7 @@ export function launchFrogger(hubEl: HTMLElement, _user: User): void {
   function checkFrog() {
     if (dead) return;
     const lane = LANES[frogRow];
-    const fx = frogX, fy = frogRow;
+    const fx = frogX;
 
     if (lane.type === 'safe') {
       if (frogRow === 0) {
