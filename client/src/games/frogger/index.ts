@@ -217,7 +217,7 @@ export function launchFrogger(hubEl: HTMLElement, _user: User): void {
     if (lane.type === 'water') {
       let onLog = false;
       for (const o of objs[frogRow]) {
-        if (fx + 4 >= o.x && fx + CELL - 4 <= o.x + LANES[frogRow].objWidth) {
+        if (fx + CELL - 8 > o.x && fx + 8 < o.x + LANES[frogRow].objWidth) {
           onLog = true; break;
         }
       }
@@ -271,8 +271,17 @@ export function launchFrogger(hubEl: HTMLElement, _user: User): void {
           ctx.fill();
         } else {
           ctx.font = `${CELL - 8}px serif`;
-          ctx.textAlign = 'left';
-          ctx.fillText(lane.label, o.x + 2, r * CELL + CELL - 6);
+          if (lane.speed < 0) {
+            ctx.save();
+            ctx.translate(o.x + lane.objWidth / 2, 0);
+            ctx.scale(-1, 1);
+            ctx.textAlign = 'center';
+            ctx.fillText(lane.label, 0, r * CELL + CELL - 6);
+            ctx.restore();
+          } else {
+            ctx.textAlign = 'left';
+            ctx.fillText(lane.label, o.x + 2, r * CELL + CELL - 6);
+          }
         }
       }
     }
