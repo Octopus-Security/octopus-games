@@ -7,8 +7,8 @@ const gamesRouter = require('./routes/games');
 
 const app = express();
 const PORT = process.env.PORT || 3013;
-const CORTEX_URL = process.env.CORTEX_URL || 'http://octopus-cortex:3010';
-const AUTH_SERVICE_URL = process.env.AUTH_SERVICE_URL || 'http://octopus-auth:3002';
+const AUTH_INTERNAL_URL = process.env.AUTH_SERVICE_URL || 'http://octopus-auth:3002';
+const AUTH_EXTERNAL_URL = process.env.AUTH_EXTERNAL_URL || '';
 
 app.use(express.json());
 app.use(session({
@@ -18,17 +18,12 @@ app.use(session({
   cookie: { secure: false, maxAge: 7 * 24 * 60 * 60 * 1000 },
 }));
 
-function getClientIp(req) {
-  return (req.headers['x-forwarded-for'] || '').split(',')[0].trim() || req.socket.remoteAddress;
-}
-
-async function tailscaleOnly(req, res, next) {
-  const ip = getClientIp(req);
+async function callAuth(endpoint, data) {
   try {
-    await axios.get(`${CORTEX_URL}/api/check-ip`, { headers: { 'x-forwarded-for': ip } });
-    next();
+    return await axios.post(`${AUTH_INTERNAL_URL}${endpoint}`, data, { timeout: 3000 });
   } catch {
-    res.status(403).json({ error: 'Access denied. Request access via Discord.' });
+    if (!AUTH_EXTERNAL_URL) throw new Error('Auth service unreachable');
+    return await axios.post(`${AUTH_EXTERNAL_URL}${endpoint}`, data, { timeout: 5000 });
   }
 }
 
@@ -38,10 +33,10 @@ function requireLogin(req, res, next) {
 }
 
 // Auth routes
-app.post('/login', tailscaleOnly, async (req, res) => {
+app.post('/login', async (req, res) => {
   const { username, password } = req.body;
   try {
-    const r = await axios.post(`${AUTH_SERVICE_URL}/api/auth/login`, { username, password });
+    const r = await callAuth('/api/auth/login', { username, password });
     if (r.data.success) {
       req.session.userId = r.data.username || username;
       req.session.username = req.session.userId;
@@ -59,16 +54,16 @@ app.post('/logout', (req, res) => {
   req.session.destroy(() => res.json({ ok: true }));
 });
 
-app.get('/api/me', tailscaleOnly, requireLogin, (req, res) => {
+app.get('/api/me', requireLogin, (req, res) => {
   res.json({ username: req.session.username });
 });
 
 // Game save API
-app.use('/api/games', tailscaleOnly, requireLogin, gamesRouter);
+app.use('/api/games', requireLogin, gamesRouter);
 
 // Serve client
-app.use(tailscaleOnly, express.static(path.join(__dirname, '../client/dist')));
-app.get('*', tailscaleOnly, (_req, res) => {
+app.use(express.static(path.join(__dirname, '../client/dist')));
+app.get('*', (_req, res) => {
   res.sendFile(path.join(__dirname, '../client/dist/index.html'));
 });
 
