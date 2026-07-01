@@ -22,9 +22,14 @@ const GameScore = sequelize.define('GameScore', {
   metadata: { type: DataTypes.TEXT, defaultValue: '{}' },
 }, { tableName: 'GameScores', timestamps: true });
 
+const Setting = sequelize.define('Setting', {
+  key:   { type: DataTypes.STRING, primaryKey: true },
+  value: { type: DataTypes.TEXT, allowNull: false, defaultValue: '' },
+}, { tableName: 'Settings', timestamps: false });
+
 async function initDb() {
   await sequelize.authenticate();
   await sequelize.sync({ alter: true });
 }
 
-module.exports = { sequelize, GameSave, GameScore, initDb };
+module.exports = { sequelize, GameSave, GameScore, Setting, initDb };

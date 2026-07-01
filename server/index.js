@@ -1,13 +1,14 @@
 const express = require('express');
 const axios = require('axios');
 const path = require('path');
-const { initDb } = require('./database');
+const { initDb, Setting } = require('./database');
 const gamesRouter = require('./routes/games');
 
 const app = express();
 const PORT = process.env.PORT || 3013;
 const AUTH_INTERNAL_URL = process.env.AUTH_SERVICE_URL || 'http://octopus-auth:3002';
 const AUTH_EXTERNAL_URL = process.env.AUTH_EXTERNAL_URL || '';
+const ADMIN_USERNAME = process.env.ADMIN_USERNAME || 'psychopathy';
 
 app.use(express.json());
 
@@ -66,6 +67,11 @@ function requireLogin(req, res, next) {
   res.status(401).json({ error: 'NOT_AUTHENTICATED' });
 }
 
+function requireAdmin(req, res, next) {
+  if (req.user && (req.user.username === ADMIN_USERNAME || req.user.role === 'admin')) return next();
+  res.status(403).json({ error: 'Forbidden' });
+}
+
 // Auth is centralized at auth.octopustechnology.net.
 function doLogout(req, res) {
   const back = encodeURIComponent(`https://${req.get('host')}/`);
@@ -74,17 +80,52 @@ function doLogout(req, res) {
 app.get('/logout', doLogout);
 app.post('/logout', doLogout);
 
-app.get('/api/me', requireLogin, (req, res) => {
-  res.json({ username: req.user.username });
+app.get('/api/me', (req, res) => {
+  if (!req.user) return res.status(401).json({ error: 'NOT_AUTHENTICATED' });
+  res.json({ username: req.user.username, role: req.user.role });
 });
 
 // Game save API
 app.use('/api/games', requireLogin, gamesRouter);
 
+// ── Public game servers API ───────────────────────────────────────────────────
+const CORTEX_URL = process.env.CORTEX_URL || 'http://octopus-cortex:3010';
+const INTERNAL_SECRET = process.env.INTERNAL_SECRET || '';
+
+app.get('/api/public/game-servers', async (req, res) => {
+  try {
+    const r = await axios.get(`${CORTEX_URL}/api/internal/game-servers`, {
+      headers: { 'x-internal-secret': INTERNAL_SECRET },
+      timeout: 8000,
+    });
+    const all = r.data;
+    const user = req.user;
+    const isAdmin = user?.username === ADMIN_USERNAME || user?.role === 'admin';
+
+    const filtered = all.filter(s => {
+      if (s.visibility === 'public') return true;
+      if (!user) return false;
+      if (isAdmin) return true;
+      const allowed = (s.allowedUsers || '').split(',').map(u => u.trim().toLowerCase()).filter(Boolean);
+      return allowed.includes(user.username.toLowerCase());
+    });
+
+    const result = filtered.map(s => {
+      const base = { id: s.id, name: s.name, game: s.game, label: s.label, emoji: s.emoji, status: s.status, visibility: s.visibility };
+      if (user) {
+        return { ...base, serverIP: s.serverIP, port: s.port, password: s.password, gameVersion: s.gameVersion, description: s.description };
+      }
+      return base;
+    });
+
+    res.json(result);
+  } catch (err) {
+    res.status(502).json({ error: 'Could not reach game server service' });
+  }
+});
+
 // ── Public game server share pages (proxied from cortex) ─────────────────────
 // These are public — no login required. Cortex holds the data and renders HTML.
-
-const CORTEX_URL = process.env.CORTEX_URL || 'http://octopus-cortex:3010';
 
 async function proxyCortex(req, res, cortexPath) {
   try {
@@ -128,13 +169,55 @@ app.get('/modpack/:serverId', (req, res) => proxyCortex(req, res, `/modpack/${re
 // Mod file downloads
 app.get('/modpack/:serverId/download/:modId', (req, res) => proxyCortex(req, res, `/modpack/${req.params.serverId}/download/${req.params.modId}`));
 
-// Serve client (static assets are public; the app shell requires SSO login)
+// ── Arcade game visibility (admin controls which games guests can access) ─────
+
+// Returns slug → true/false map. Missing slugs default to true (public).
+app.get('/api/public/arcade-visibility', async (req, res) => {
+  try {
+    const row = await Setting.findByPk('arcadeVisibility');
+    const map = row ? JSON.parse(row.value) : {};
+    res.json(map);
+  } catch {
+    res.json({});
+  }
+});
+
+// body: { slug, access: 'public'|'members'|'whitelist', allowedUsers?: 'user1,user2' }
+app.patch('/api/admin/arcade-visibility', requireAdmin, async (req, res) => {
+  const { slug, access, allowedUsers } = req.body || {};
+  if (!slug || !['public', 'members', 'whitelist'].includes(access)) {
+    return res.status(400).json({ error: 'slug and access (public|members|whitelist) required' });
+  }
+  try {
+    const row = await Setting.findByPk('arcadeVisibility');
+    const map = row ? JSON.parse(row.value) : {};
+    map[slug] = { access, allowedUsers: allowedUsers || '' };
+    await Setting.upsert({ key: 'arcadeVisibility', value: JSON.stringify(map) });
+    res.json({ ok: true, map });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ── Game server visibility (proxied through to cortex) ────────────────────────
+
+app.patch('/api/admin/game-servers/:id/visibility', requireAdmin, async (req, res) => {
+  try {
+    const { visibility, allowedUsers } = req.body || {};
+    const r = await axios.patch(
+      `${CORTEX_URL}/api/internal/game-servers/${req.params.id}/visibility`,
+      { visibility, allowedUsers },
+      { headers: { 'x-internal-secret': INTERNAL_SECRET }, timeout: 8000 }
+    );
+    res.status(r.status).json(r.data);
+  } catch (err) {
+    res.status(502).json({ error: 'Could not reach game server service' });
+  }
+});
+
+// Serve client — public, no login required (frontend handles guest mode)
 app.use(express.static(path.join(__dirname, '../client/dist')));
 app.get('*', (req, res) => {
-  if (!req.user) {
-    const back = encodeURIComponent(`https://${req.get('host')}${req.originalUrl}`);
-    return res.redirect(`${AUTH_LOGIN_BASE}/login?redirect=${back}`);
-  }
   res.sendFile(path.join(__dirname, '../client/dist/index.html'));
 });
 

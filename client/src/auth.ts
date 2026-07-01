@@ -1,5 +1,6 @@
 export interface User {
   username: string;
+  role?: string;
 }
 
 export async function getUser(): Promise<User | null> {
