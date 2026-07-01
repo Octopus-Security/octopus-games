@@ -81,6 +81,53 @@ app.get('/api/me', requireLogin, (req, res) => {
 // Game save API
 app.use('/api/games', requireLogin, gamesRouter);
 
+// ── Public game server share pages (proxied from cortex) ─────────────────────
+// These are public — no login required. Cortex holds the data and renders HTML.
+
+const CORTEX_URL = process.env.CORTEX_URL || 'http://octopus-cortex:3010';
+
+async function proxyCortex(req, res, cortexPath) {
+  try {
+    const r = await axios.get(`${CORTEX_URL}${cortexPath}`, {
+      responseType: 'stream',
+      timeout: 15000,
+      validateStatus: () => true,
+    });
+    res.status(r.status);
+    const ct = r.headers['content-type'];
+    const cd = r.headers['content-disposition'];
+    if (ct) res.setHeader('content-type', ct);
+    if (cd) res.setHeader('content-disposition', cd);
+    r.data.pipe(res);
+  } catch (err) {
+    res.status(502).send('<html><body style="background:#111;color:#e74c3c;font-family:sans-serif;padding:40px"><h2>Could not reach game server service</h2></body></html>');
+  }
+}
+
+// Token-gated short links: /m/:token → cortex resolves and redirects to /modpack/:id
+app.get('/m/:token', async (req, res) => {
+  try {
+    const r = await axios.get(`${CORTEX_URL}/m/${req.params.token}`, {
+      maxRedirects: 0,
+      validateStatus: () => true,
+      timeout: 5000,
+    });
+    if (r.status === 301 || r.status === 302) {
+      // Location from cortex is a relative path like /modpack/:id — redirect to same path here
+      return res.redirect(r.headers.location || '/');
+    }
+    res.status(r.status).send(typeof r.data === 'string' ? r.data : JSON.stringify(r.data));
+  } catch (err) {
+    res.status(502).send('<h2>Could not reach game server service</h2>');
+  }
+});
+
+// Modpack join page
+app.get('/modpack/:serverId', (req, res) => proxyCortex(req, res, `/modpack/${req.params.serverId}`));
+
+// Mod file downloads
+app.get('/modpack/:serverId/download/:modId', (req, res) => proxyCortex(req, res, `/modpack/${req.params.serverId}/download/${req.params.modId}`));
+
 // Serve client (static assets are public; the app shell requires SSO login)
 app.use(express.static(path.join(__dirname, '../client/dist')));
 app.get('*', (req, res) => {
