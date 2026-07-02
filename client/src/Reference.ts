@@ -341,6 +341,13 @@ function renderControls(container: HTMLElement, user: User | null) {
     }
     container.appendChild(actionBar);
 
+    // Selected game name heading
+    const g = GAMES.find(x => x.id === activeGame);
+    const heading = document.createElement('h3');
+    heading.className = 'text-lg font-bold text-white mb-3 flex items-center gap-2';
+    heading.innerHTML = `<span class="text-2xl">${g?.emoji ?? ''}</span> ${g?.label ?? activeGame} Controls`;
+    container.appendChild(heading);
+
     // Controls sections
     const card = document.createElement('div');
     card.className = 'flex flex-col gap-4';
