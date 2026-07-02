@@ -15,6 +15,7 @@ interface RecipeNode {
 }
 
 interface TotalRow { name: string; qty: number; url: string; }
+interface UsedInRow { name: string; qty: number; station: string; craftsAmount: number; url: string; }
 
 const GAMES = [
   { id: 'terraria', label: 'Vanilla',  emoji: '🌳' },
@@ -53,6 +54,7 @@ export function renderCrafting(container: HTMLElement): void {
   let searchInput = '';
   let recipeResult: { tree: RecipeNode; totals: TotalRow[] } | null = null;
   let error = '';
+  let lastLookupItem = ''; // so a failed recipe lookup (raw material) can still offer "used in"
   let loading = false;
 
   async function loadClasses() {
@@ -61,7 +63,7 @@ export function renderCrafting(container: HTMLElement): void {
   }
 
   async function loadBrowse(cls: string) {
-    loading = true; error = ''; render();
+    loading = true; error = ''; lastLookupItem = ''; render();
     try {
       browseItems = await apiGet<string[]>(`/api/crafting/${activeGame}/browse?class=${cls}`);
     } catch (e: unknown) {
@@ -73,7 +75,7 @@ export function renderCrafting(container: HTMLElement): void {
   }
 
   async function loadRecipe(item: string) {
-    loading = true; error = ''; recipeResult = null; render();
+    loading = true; error = ''; recipeResult = null; lastLookupItem = item; render();
     try {
       recipeResult = await apiGet(`/api/crafting/${activeGame}/recipe?item=${encodeURIComponent(item)}`);
     } catch (e: unknown) {
@@ -81,6 +83,50 @@ export function renderCrafting(container: HTMLElement): void {
     }
     loading = false;
     render();
+  }
+
+  // Lazy "Used in" widget — fetched on first click, reused for both tree
+  // nodes and the flattened totals list. Returns the toggle button (place
+  // inline) and the results panel (place as a block sibling below it).
+  function buildUsedIn(itemName: string): { toggle: HTMLElement; panel: HTMLElement } {
+    const toggle = document.createElement('button');
+    toggle.textContent = 'Used in ▾';
+    toggle.className = 'text-xs text-blue-400 hover:underline shrink-0';
+    const panel = document.createElement('div');
+    panel.className = 'hidden mt-1 mb-1 pl-3 border-l-2 border-gray-800 flex flex-col gap-1';
+    let loaded = false;
+
+    toggle.addEventListener('click', async () => {
+      const willOpen = panel.classList.contains('hidden');
+      if (willOpen && !loaded) {
+        toggle.textContent = 'Loading…';
+        try {
+          const rows = await apiGet<UsedInRow[]>(`/api/crafting/${activeGame}/used-in?item=${encodeURIComponent(itemName)}`);
+          loaded = true;
+          panel.innerHTML = '';
+          if (!rows.length) {
+            panel.innerHTML = '<p class="text-xs text-gray-600 italic py-1">Not used in any known recipe.</p>';
+          } else {
+            rows.forEach(u => {
+              const r = document.createElement('div');
+              r.className = 'flex items-center justify-between gap-2';
+              r.innerHTML = `
+                <a href="${u.url}" target="_blank" rel="noopener" class="text-xs text-gray-300 hover:text-blue-400 hover:underline">${u.name}</a>
+                <span class="text-xs font-mono text-gray-500 shrink-0">needs ×${u.qty}</span>
+              `;
+              panel.appendChild(r);
+            });
+          }
+        } catch (e: unknown) {
+          loaded = true;
+          panel.innerHTML = `<p class="text-xs text-red-400 py-1">${(e as Error).message}</p>`;
+        }
+      }
+      panel.classList.toggle('hidden');
+      toggle.textContent = panel.classList.contains('hidden') ? 'Used in ▾' : 'Used in ▴';
+    });
+
+    return { toggle, panel };
   }
 
   function renderNode(node: RecipeNode, depth: number): HTMLElement {
@@ -120,7 +166,11 @@ export function renderCrafting(container: HTMLElement): void {
       line.appendChild(badge);
     }
 
+    const { toggle, panel } = buildUsedIn(node.name);
+    line.appendChild(toggle);
+
     row.appendChild(line);
+    row.appendChild(panel);
 
     if (node.children && node.children.length) {
       node.children.forEach(c => row.appendChild(renderNode(c, depth + 1)));
@@ -179,9 +229,20 @@ export function renderCrafting(container: HTMLElement): void {
 
     if (error) {
       const errEl = document.createElement('p');
-      errEl.className = 'text-sm text-red-400 mb-4';
+      errEl.className = 'text-sm text-red-400 mb-2';
       errEl.textContent = error;
       container.appendChild(errEl);
+
+      // Not craftable (raw material, drop, event reward) — still let them
+      // check what it's used IN, since that's still useful information.
+      if (lastLookupItem) {
+        const fallbackRow = document.createElement('div');
+        fallbackRow.className = 'mb-4';
+        const { toggle, panel } = buildUsedIn(lastLookupItem);
+        fallbackRow.appendChild(toggle);
+        fallbackRow.appendChild(panel);
+        container.appendChild(fallbackRow);
+      }
     }
 
     if (loading) {
@@ -219,11 +280,20 @@ export function renderCrafting(container: HTMLElement): void {
       list.className = 'flex flex-col gap-1.5';
       recipeResult.totals.forEach(t => {
         const row = document.createElement('div');
-        row.className = 'flex items-center justify-between gap-2 text-sm';
-        row.innerHTML = `
+        row.className = 'border-b border-gray-800 last:border-0 pb-1.5 last:pb-0';
+
+        const top = document.createElement('div');
+        top.className = 'flex items-center justify-between gap-2 text-sm';
+        top.innerHTML = `
           <a href="${t.url}" target="_blank" rel="noopener" class="text-gray-300 hover:text-blue-400 hover:underline">${t.name}</a>
-          <span class="font-mono text-white bg-gray-800 border border-gray-700 rounded px-2 py-0.5 text-xs shrink-0">×${t.qty}</span>
+          <div class="flex items-center gap-3 shrink-0">
+            <span class="font-mono text-white bg-gray-800 border border-gray-700 rounded px-2 py-0.5 text-xs">×${t.qty}</span>
+          </div>
         `;
+        const { toggle, panel } = buildUsedIn(t.name);
+        top.lastElementChild!.appendChild(toggle);
+        row.appendChild(top);
+        row.appendChild(panel);
         list.appendChild(row);
       });
       totalsCard.appendChild(list);

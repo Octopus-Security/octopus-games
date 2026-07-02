@@ -10,6 +10,7 @@
  *   GET /api/crafting/:game/classes            which weapon/armor classes exist
  *   GET /api/crafting/:game/browse?class=Melee items in a class (category listing)
  *   GET /api/crafting/:game/recipe?item=NAME   full recursive recipe tree + totals
+ *   GET /api/crafting/:game/used-in?item=NAME  what can be crafted USING this item
  */
 
 const express = require('express');
@@ -148,6 +149,48 @@ function flattenTotals(node, totals = {}) {
   return totals;
 }
 
+// Reverse lookup: what can be crafted USING this item. We don't know each
+// wiki's ings-delimiter character ahead of time, so instead of hardcoding it
+// we do a broad substring LIKE on the raw ings blob (cheap, one query) and
+// then filter for an exact ingredient-name match client-side via the same
+// parser used for the forward direction — false-positive substring rows
+// (e.g. "Bar" matching "Iron Bar") get discarded here, not returned.
+async function getUsedIn(wiki, itemName) {
+  const key = `${wiki.api}::usedin::${itemName}`;
+  const cached = cacheGet(key);
+  if (cached) return cached;
+
+  const safeName = itemName.replace(/"/g, '');
+  const params = new URLSearchParams({
+    action: 'cargoquery', tables: 'Recipes',
+    fields: '_pageName,result,amount,ings,station',
+    where: `ings LIKE "%${safeName}%"`,
+    limit: '500', format: 'json', origin: '*',
+  });
+  const r = await axios.get(`${wiki.api}?${params}`, { timeout: 10000, headers: UA });
+  const rows = r.data?.cargoquery || [];
+
+  const byResult = new Map();
+  for (const row of rows) {
+    const t = row.title;
+    const ings = parseIngredients(t.ings);
+    const match = ings.find(i => i.name === itemName);
+    if (!match || !t.result) continue;
+    if (!byResult.has(t.result)) {
+      byResult.set(t.result, {
+        name: t.result,
+        qty: match.qty,
+        station: t.station || '',
+        craftsAmount: parseInt(t.amount, 10) || 1,
+        url: itemUrl(wiki.url, t.result),
+      });
+    }
+  }
+  const usedIn = Array.from(byResult.values()).sort((a, b) => a.name.localeCompare(b.name));
+  cacheSet(key, usedIn);
+  return usedIn;
+}
+
 router.get('/:game/classes', (req, res) => {
   const { game } = req.params;
   if (!WIKIS[game]) return res.status(400).json({ error: 'Unknown game' });
@@ -193,6 +236,21 @@ router.get('/:game/recipe', async (req, res) => {
       .map(([name, v]) => ({ name, qty: v.qty, url: v.url }))
       .sort((a, b) => b.qty - a.qty);
     res.json({ tree, totals });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.get('/:game/used-in', async (req, res) => {
+  const { game } = req.params;
+  const { item } = req.query;
+  const wiki = WIKIS[game];
+  if (!wiki) return res.status(400).json({ error: 'Unknown game' });
+  if (!item) return res.status(400).json({ error: 'item required' });
+
+  try {
+    const usedIn = await getUsedIn(wiki, item);
+    res.json(usedIn);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
