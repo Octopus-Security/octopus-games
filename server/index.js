@@ -128,6 +128,44 @@ app.get('/api/public/game-servers', async (req, res) => {
   }
 });
 
+// Single server for the shareable /server/:id page.
+// Public servers reveal connection details to ANYONE (that's the point of the
+// share link). Members/whitelist/private still require the right account.
+app.get('/api/public/game-servers/:id', async (req, res) => {
+  try {
+    const r = await axios.get(`${CORTEX_URL}/api/internal/game-servers`, {
+      headers: { 'x-internal-secret': INTERNAL_SECRET },
+      timeout: 8000,
+    });
+    const s = r.data.find(x => String(x.id) === String(req.params.id));
+    if (!s) return res.status(404).json({ error: 'Not found' });
+
+    const user = req.user;
+    const isAdmin = user?.username === ADMIN_USERNAME || user?.role === 'admin';
+    const visibility = s.visibility || 'private';
+
+    let canSee = false;
+    if (isAdmin) canSee = true;
+    else if (visibility === 'public') canSee = true;
+    else if (visibility === 'members') canSee = !!user;
+    else if (visibility === 'whitelist') {
+      const allowed = (s.allowedUsers || '').split(',').map(u => u.trim().toLowerCase()).filter(Boolean);
+      canSee = !!user && allowed.includes(user.username.toLowerCase());
+    }
+    if (!canSee) return res.status(403).json({ error: 'Forbidden' });
+
+    // Reveal connection details to anyone who can see a public server, or to any
+    // authenticated viewer who passed the check above.
+    const showDetails = visibility === 'public' || !!user;
+    const base = { id: s.id, name: s.name, game: s.game, label: s.label, emoji: s.emoji, status: s.status, visibility, description: s.description };
+    res.json(showDetails
+      ? { ...base, serverIP: s.serverIP, port: s.port, password: s.password, gameVersion: s.gameVersion }
+      : base);
+  } catch (err) {
+    res.status(502).json({ error: 'Could not reach game server service' });
+  }
+});
+
 // ── Public game server share pages (proxied from cortex) ─────────────────────
 // These are public — no login required. Cortex holds the data and renders HTML.
 

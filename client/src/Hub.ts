@@ -1,5 +1,6 @@
 import { logout, type User } from './auth';
 import { renderReference } from './Reference';
+import { openShareModal } from './serverShareCard';
 import { launchOctopusPunch } from './games/octopus-punch/index';
 import { launchMinesweeper } from './games/minesweeper/index';
 import { launchSudoku } from './games/sudoku/index';
@@ -165,16 +166,23 @@ function renderServerCard(s: GameServer, user: User | null, isAdmin: boolean): H
       ? '<p class="text-xs text-gray-600 mt-1">Sign in to see connection details</p>'
       : '';
 
+  const vis = s.visibility || 'private';
   const adminRow = isAdmin
-    ? `<div class="flex items-center gap-2 mt-1 pt-3 border-t border-gray-800">
-        <span class="text-xs text-gray-600">Visibility:</span>
-        <select data-server-id="${s.id}" class="visibility-select text-xs bg-gray-800 border border-gray-700 rounded px-2 py-1 text-gray-300">
-          <option value="private" ${(s.visibility || 'private') === 'private' ? 'selected' : ''}>Private</option>
-          <option value="public" ${s.visibility === 'public' ? 'selected' : ''}>Public</option>
-        </select>
-        <span class="text-xs text-gray-600 ml-2">Allowed users:</span>
-        <input type="text" data-server-id="${s.id}" class="allowed-input flex-1 text-xs bg-gray-800 border border-gray-700 rounded px-2 py-1 text-gray-300 outline-none" placeholder="user1,user2" value="${s.allowedUsers || ''}"/>
-        <button data-server-id="${s.id}" class="save-visibility-btn text-xs px-2 py-1 bg-blue-700 hover:bg-blue-600 text-white rounded transition-colors">Save</button>
+    ? `<div class="flex flex-col gap-2 mt-1 pt-3 border-t border-gray-800">
+        <div class="flex items-center gap-2 flex-wrap">
+          <span class="text-xs text-gray-600">Who can see:</span>
+          <select data-server-id="${s.id}" class="visibility-select text-xs bg-gray-800 border border-gray-700 rounded px-2 py-1 text-gray-300">
+            <option value="public" ${vis === 'public' ? 'selected' : ''}>Public — anyone</option>
+            <option value="members" ${vis === 'members' ? 'selected' : ''}>Members — any account</option>
+            <option value="whitelist" ${vis === 'whitelist' ? 'selected' : ''}>Whitelist — specific accounts</option>
+            <option value="private" ${vis === 'private' ? 'selected' : ''}>Private — admin only</option>
+          </select>
+          <button data-server-id="${s.id}" class="save-visibility-btn text-xs px-2 py-1 bg-blue-700 hover:bg-blue-600 text-white rounded transition-colors">Save</button>
+        </div>
+        <div class="whitelist-wrap flex items-center gap-2 ${vis === 'whitelist' ? '' : 'hidden'}">
+          <span class="text-xs text-gray-600 shrink-0">Allowed:</span>
+          <input type="text" data-server-id="${s.id}" class="allowed-input flex-1 text-xs bg-gray-800 border border-gray-700 rounded px-2 py-1 text-gray-300 outline-none min-w-0" placeholder="user1,user2" value="${s.allowedUsers || ''}"/>
+        </div>
       </div>`
     : '';
 
@@ -191,10 +199,22 @@ function renderServerCard(s: GameServer, user: User | null, isAdmin: boolean): H
     </div>
     ${s.description ? `<p class="text-sm text-gray-400 leading-relaxed">${s.description}</p>` : ''}
     ${connectionInfo}
+    <div class="mt-1">
+      <button class="share-btn text-xs px-3 py-1.5 bg-gray-800 hover:bg-gray-700 text-gray-300 border border-gray-700 rounded-lg transition-colors inline-flex items-center gap-1">🔗 Share</button>
+    </div>
     ${adminRow}
   `;
 
+  card.querySelector('.share-btn')?.addEventListener('click', () => openShareModal(s));
+
   if (isAdmin) {
+    // Toggle the whitelist input based on the selected visibility
+    const select = card.querySelector('.visibility-select') as HTMLSelectElement;
+    const whitelistWrap = card.querySelector('.whitelist-wrap') as HTMLElement;
+    select?.addEventListener('change', () => {
+      whitelistWrap?.classList.toggle('hidden', select.value !== 'whitelist');
+    });
+
     card.querySelector('.save-visibility-btn')?.addEventListener('click', async (e) => {
       const btn = e.target as HTMLButtonElement;
       const id = btn.dataset.serverId;
