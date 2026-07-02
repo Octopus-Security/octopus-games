@@ -67,7 +67,12 @@ export function buildDiscord(s: ShareServer): string {
   if (s.password)    lines.push(`🔑  **Password:** \`${s.password}\``);
   if (s.gameVersion) lines.push(`🎮  **Version:** ${s.gameVersion}`);
   if (s.modPlatform === 'modpack' && s.modpackUrl) lines.push(`📦  **Modpack:** ${s.modpackUrl}`);
-  if (s.mods && s.mods.length) lines.push(`📦  **Mods:** ${s.mods.map(m => m.name).join(' • ')}`);
+  if (s.mods && s.mods.length) {
+    lines.push('📦  **Mods:**');
+    // Discord only auto-links raw URLs in plain messages (masked [text](url)
+    // links don't render outside bot embeds), so list name + bare URL per line.
+    s.mods.forEach(m => lines.push(`• ${m.name}${m.url ? ` — ${m.url}` : ''}`));
+  }
   lines.push(sep);
   return lines.join('\n');
 }
@@ -80,7 +85,10 @@ export function buildPlain(s: ShareServer): string {
   if (s.password)    lines.push(`Password: ${s.password}`);
   if (s.gameVersion) lines.push(`Version: ${s.gameVersion}`);
   if (s.modPlatform === 'modpack' && s.modpackUrl) lines.push(`Modpack: ${s.modpackUrl}`);
-  if (s.mods && s.mods.length) lines.push(`Mods: ${s.mods.map(m => m.name).join(', ')}`);
+  if (s.mods && s.mods.length) {
+    lines.push('Mods:');
+    s.mods.forEach(m => lines.push(`- ${m.name}${m.url ? ` — ${m.url}` : ''}`));
+  }
   return lines.join('\n');
 }
 
