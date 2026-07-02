@@ -4,6 +4,7 @@ const path = require('path');
 const { initDb, Setting } = require('./database');
 const gamesRouter = require('./routes/games');
 const wikiRouter  = require('./routes/wiki');
+const craftingRouter = require('./routes/crafting');
 
 const app = express();
 const PORT = process.env.PORT || 3013;
@@ -91,6 +92,7 @@ app.use('/api/games', requireLogin, gamesRouter);
 
 // Wiki / reference (public search + pokédex + ror2-chars; controls require login per-route)
 app.use('/api/wiki', wikiRouter);
+app.use('/api/crafting', craftingRouter);
 
 // ── Public game servers API ───────────────────────────────────────────────────
 const CORTEX_URL = process.env.CORTEX_URL || 'http://octopus-cortex:3010';

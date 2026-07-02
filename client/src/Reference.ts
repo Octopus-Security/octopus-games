@@ -1,8 +1,9 @@
 // Reference panel: wiki search, Pokédex, RoR2 char unlocks, per-user controls
+import { renderCrafting } from './Crafting';
 
 interface User { username: string; role?: string; }
 
-type SubTab = 'wiki' | 'pokedex' | 'ror2' | 'controls' | 'setup';
+type SubTab = 'wiki' | 'pokedex' | 'ror2' | 'controls' | 'setup' | 'crafting';
 
 interface SetupGuide { game: string; emoji: string; steps: string[]; }
 
@@ -493,6 +494,7 @@ export function renderReference(user: User | null): HTMLElement {
 
   const TABS: { id: SubTab; label: string }[] = [
     { id: 'wiki',     label: 'Wiki Search' },
+    { id: 'crafting', label: 'Terraria Crafting' },
     { id: 'pokedex',  label: 'Pokédex'    },
     { id: 'ror2',     label: 'RoR2 Chars' },
     { id: 'controls', label: 'Controls'   },
@@ -520,6 +522,7 @@ export function renderReference(user: User | null): HTMLElement {
     if (activeTab === 'ror2')     renderRor2Chars(content);
     if (activeTab === 'controls') renderControls(content, user);
     if (activeTab === 'setup')    renderSetupGuides(content);
+    if (activeTab === 'crafting') renderCrafting(content);
   }
 
   render();
