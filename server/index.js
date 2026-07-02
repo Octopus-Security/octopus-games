@@ -3,6 +3,7 @@ const axios = require('axios');
 const path = require('path');
 const { initDb, Setting } = require('./database');
 const gamesRouter = require('./routes/games');
+const wikiRouter  = require('./routes/wiki');
 
 const app = express();
 const PORT = process.env.PORT || 3013;
@@ -87,6 +88,9 @@ app.get('/api/me', (req, res) => {
 
 // Game save API
 app.use('/api/games', requireLogin, gamesRouter);
+
+// Wiki / reference (public search + pokédex + ror2-chars; controls require login per-route)
+app.use('/api/wiki', wikiRouter);
 
 // ── Public game servers API ───────────────────────────────────────────────────
 const CORTEX_URL = process.env.CORTEX_URL || 'http://octopus-cortex:3010';

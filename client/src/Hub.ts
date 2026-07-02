@@ -1,4 +1,5 @@
 import { logout, type User } from './auth';
+import { renderReference } from './Reference';
 import { launchOctopusPunch } from './games/octopus-punch/index';
 import { launchMinesweeper } from './games/minesweeper/index';
 import { launchSudoku } from './games/sudoku/index';
@@ -232,6 +233,7 @@ export function renderHub(user: User | null, onRefresh: () => void): HTMLElement
       <div class="flex items-center gap-2">
         <button id="tabServers" class="tab-btn px-4 py-1.5 rounded-full text-sm font-medium transition-colors bg-blue-600 text-white">Servers</button>
         <button id="tabGames" class="tab-btn px-4 py-1.5 rounded-full text-sm font-medium transition-colors bg-gray-800 text-gray-400 hover:text-white border border-gray-700">Arcade</button>
+        <button id="tabRef" class="tab-btn px-4 py-1.5 rounded-full text-sm font-medium transition-colors bg-gray-800 text-gray-400 hover:text-white border border-gray-700">Reference</button>
       </div>
       <div class="flex items-center gap-4">
         ${user
@@ -252,6 +254,8 @@ export function renderHub(user: User | null, onRefresh: () => void): HTMLElement
           <div class="col-span-full text-center text-gray-600 py-12">Loading servers…</div>
         </div>
       </div>
+      <!-- Reference tab -->
+      <div id="refTab" class="hidden"></div>
       <!-- Arcade tab -->
       <div id="arcadeTab" class="hidden">
         <div class="flex items-center gap-2 mb-6 flex-wrap">
@@ -290,19 +294,33 @@ export function renderHub(user: User | null, onRefresh: () => void): HTMLElement
 
   // Tab switching
   const serversTab = el.querySelector('#serversTab') as HTMLElement;
-  const arcadeTab = el.querySelector('#arcadeTab') as HTMLElement;
+  const arcadeTab  = el.querySelector('#arcadeTab')  as HTMLElement;
+  const refTab     = el.querySelector('#refTab')     as HTMLElement;
   const tabServersBtn = el.querySelector('#tabServers') as HTMLButtonElement;
-  const tabGamesBtn = el.querySelector('#tabGames') as HTMLButtonElement;
+  const tabGamesBtn   = el.querySelector('#tabGames')   as HTMLButtonElement;
+  const tabRefBtn     = el.querySelector('#tabRef')     as HTMLButtonElement;
 
-  function switchTab(tab: 'games' | 'servers') {
+  type Tab = 'servers' | 'games' | 'ref';
+  let refRendered = false;
+
+  function switchTab(tab: Tab) {
     serversTab.classList.toggle('hidden', tab !== 'servers');
-    arcadeTab.classList.toggle('hidden', tab !== 'games');
-    tabServersBtn.className = `tab-btn px-4 py-1.5 rounded-full text-sm font-medium transition-colors ${tab === 'servers' ? 'bg-blue-600 text-white' : 'bg-gray-800 text-gray-400 hover:text-white border border-gray-700'}`;
-    tabGamesBtn.className = `tab-btn px-4 py-1.5 rounded-full text-sm font-medium transition-colors ${tab === 'games' ? 'bg-blue-600 text-white' : 'bg-gray-800 text-gray-400 hover:text-white border border-gray-700'}`;
+    arcadeTab.classList.toggle('hidden',  tab !== 'games');
+    refTab.classList.toggle('hidden',     tab !== 'ref');
+    const active = 'bg-blue-600 text-white';
+    const inactive = 'bg-gray-800 text-gray-400 hover:text-white border border-gray-700';
+    tabServersBtn.className = `tab-btn px-4 py-1.5 rounded-full text-sm font-medium transition-colors ${tab === 'servers' ? active : inactive}`;
+    tabGamesBtn.className   = `tab-btn px-4 py-1.5 rounded-full text-sm font-medium transition-colors ${tab === 'games'   ? active : inactive}`;
+    tabRefBtn.className     = `tab-btn px-4 py-1.5 rounded-full text-sm font-medium transition-colors ${tab === 'ref'     ? active : inactive}`;
+    if (tab === 'ref' && !refRendered) {
+      refTab.appendChild(renderReference(user));
+      refRendered = true;
+    }
   }
 
   tabServersBtn.addEventListener('click', () => switchTab('servers'));
-  tabGamesBtn.addEventListener('click', () => switchTab('games'));
+  tabGamesBtn.addEventListener('click',   () => switchTab('games'));
+  tabRefBtn.addEventListener('click',     () => switchTab('ref'));
 
   // Auth
   el.querySelector('#logoutBtn')?.addEventListener('click', async () => {

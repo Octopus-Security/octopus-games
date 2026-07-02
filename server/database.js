@@ -27,9 +27,16 @@ const Setting = sequelize.define('Setting', {
   value: { type: DataTypes.TEXT, allowNull: false, defaultValue: '' },
 }, { tableName: 'Settings', timestamps: false });
 
+const GameControls = sequelize.define('GameControls', {
+  id:       { type: DataTypes.INTEGER, primaryKey: true, autoIncrement: true },
+  username: { type: DataTypes.STRING, allowNull: true },  // null = site-wide default
+  game:     { type: DataTypes.STRING, allowNull: false },
+  controls: { type: DataTypes.TEXT, allowNull: false, defaultValue: '[]' },
+}, { tableName: 'GameControls', timestamps: true });
+
 async function initDb() {
   await sequelize.authenticate();
   await sequelize.sync({ alter: true });
 }
 
-module.exports = { sequelize, GameSave, GameScore, Setting, initDb };
+module.exports = { sequelize, GameSave, GameScore, Setting, GameControls, initDb };
