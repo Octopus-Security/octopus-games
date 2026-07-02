@@ -333,7 +333,7 @@ export function renderHub(user: User | null, onRefresh: () => void): HTMLElement
     tabGamesBtn.className   = `tab-btn px-4 py-1.5 rounded-full text-sm font-medium transition-colors ${tab === 'games'   ? active : inactive}`;
     tabRefBtn.className     = `tab-btn px-4 py-1.5 rounded-full text-sm font-medium transition-colors ${tab === 'ref'     ? active : inactive}`;
     if (tab === 'ref' && !refRendered) {
-      refTab.appendChild(renderReference(user));
+      refTab.appendChild(renderReference(user, isAdmin));
       refRendered = true;
     }
   }

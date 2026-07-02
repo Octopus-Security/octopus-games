@@ -486,7 +486,7 @@ function renderSetupGuides(container: HTMLElement) {
 
 // ── Root Reference panel ──────────────────────────────────────────────────────
 
-export function renderReference(user: User | null): HTMLElement {
+export function renderReference(user: User | null, isAdmin = false): HTMLElement {
   const el = document.createElement('div');
   el.className = 'py-8 px-4 max-w-4xl mx-auto';
 
@@ -522,7 +522,7 @@ export function renderReference(user: User | null): HTMLElement {
     if (activeTab === 'ror2')     renderRor2Chars(content);
     if (activeTab === 'controls') renderControls(content, user);
     if (activeTab === 'setup')    renderSetupGuides(content);
-    if (activeTab === 'crafting') renderCrafting(content);
+    if (activeTab === 'crafting') renderCrafting(content, user, isAdmin);
   }
 
   render();
