@@ -1,5 +1,5 @@
 // Standalone public share page for a single game server: /server/:id
-import { type ShareServer, buildDiscord, buildPlain, shareLink } from './serverShareCard';
+import { type ShareServer, buildDiscord, buildPlain, shareLink, modsBlockHtml, instructionsBlockHtml } from './serverShareCard';
 
 function addr(s: ShareServer): string {
   return s.serverIP && s.port ? `${s.serverIP}:${s.port}` : (s.serverIP || '');
@@ -67,6 +67,8 @@ export function renderServerShare(id: string): HTMLElement {
                 <span class="text-sm text-gray-400">${s.gameVersion}</span>
               </div>` : ''}
             </div>
+            ${modsBlockHtml(s)}
+            ${instructionsBlockHtml(s)}
             <p class="text-xs text-gray-600 uppercase tracking-wide mb-2">Copy as…</p>
             <div class="flex gap-2 flex-wrap mb-5">
               ${copyBtn('Discord embed', () => buildDiscord(s))}

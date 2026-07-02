@@ -1,6 +1,8 @@
 // Shareable server card: Discord/plain-text formats + a share modal.
 // Mirrors the copyable card format used in cortex's admin panel.
 
+export interface ShareMod { name: string; url: string; }
+
 export interface ShareServer {
   id: number;
   name: string;
@@ -13,6 +15,42 @@ export interface ShareServer {
   password?: string;
   gameVersion?: string;
   description?: string;
+  modPlatform?: string | null;
+  mods?: ShareMod[];
+  modpackUrl?: string;
+  loader?: string;
+  instructions?: string[];
+}
+
+const PLATFORM_LABELS: Record<string, string> = {
+  steam: 'Steam Workshop mods',
+  thunderstore: 'Thunderstore mods',
+  nexus: 'Nexus mods (SMAPI)',
+  modpack: 'Modpack',
+  workshop_collection: 'Steam Workshop collection',
+};
+
+export function modsBlockHtml(s: ShareServer): string {
+  const parts: string[] = [];
+  if (s.mods && s.mods.length) {
+    const label = PLATFORM_LABELS[s.modPlatform || ''] || 'Required mods';
+    parts.push(`<p class="text-xs text-gray-600 uppercase tracking-wide mb-2">${label}</p>`);
+    parts.push('<div class="flex flex-col gap-1 mb-4">' + s.mods.map(m =>
+      `<a href="${m.url}" target="_blank" rel="noopener" class="text-sm text-blue-400 hover:underline break-all">↗ ${m.name}</a>`
+    ).join('') + '</div>');
+  }
+  if (s.modPlatform === 'modpack' && s.modpackUrl) {
+    parts.push(`<p class="text-xs text-gray-600 uppercase tracking-wide mb-2">Modpack</p>`);
+    parts.push(`<a href="${s.modpackUrl}" target="_blank" rel="noopener" class="text-sm text-blue-400 hover:underline break-all mb-4 block">↗ Download modpack</a>`);
+  }
+  return parts.join('');
+}
+
+export function instructionsBlockHtml(s: ShareServer): string {
+  if (!s.instructions || !s.instructions.length) return '';
+  const steps = s.instructions.map(line => `<li class="text-sm text-gray-400 leading-relaxed mb-1.5">${line}</li>`).join('');
+  return `<p class="text-xs text-gray-600 uppercase tracking-wide mb-2">How to connect</p>
+    <ol class="list-decimal list-inside mb-4 marker:text-gray-600">${steps}</ol>`;
 }
 
 function addr(s: ShareServer): string {
@@ -28,6 +66,8 @@ export function buildDiscord(s: ShareServer): string {
   ];
   if (s.password)    lines.push(`🔑  **Password:** \`${s.password}\``);
   if (s.gameVersion) lines.push(`🎮  **Version:** ${s.gameVersion}`);
+  if (s.modPlatform === 'modpack' && s.modpackUrl) lines.push(`📦  **Modpack:** ${s.modpackUrl}`);
+  if (s.mods && s.mods.length) lines.push(`📦  **Mods:** ${s.mods.map(m => m.name).join(' • ')}`);
   lines.push(sep);
   return lines.join('\n');
 }
@@ -39,6 +79,8 @@ export function buildPlain(s: ShareServer): string {
   ];
   if (s.password)    lines.push(`Password: ${s.password}`);
   if (s.gameVersion) lines.push(`Version: ${s.gameVersion}`);
+  if (s.modPlatform === 'modpack' && s.modpackUrl) lines.push(`Modpack: ${s.modpackUrl}`);
+  if (s.mods && s.mods.length) lines.push(`Mods: ${s.mods.map(m => m.name).join(', ')}`);
   return lines.join('\n');
 }
 
@@ -100,6 +142,8 @@ export function openShareModal(s: ShareServer): void {
         </div>` : ''}
       </div>` : `
       <p class="text-sm text-gray-500 mb-4">This server is private — connection details are only shown to people you've given access.</p>`}
+    ${hasDetails ? modsBlockHtml(s) : ''}
+    ${hasDetails ? instructionsBlockHtml(s) : ''}
     <p class="text-xs text-gray-600 uppercase tracking-wide mb-2">Shareable link</p>
     <div class="flex gap-2 mb-4">
       <input class="link-input flex-1 bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-xs text-gray-300 font-mono outline-none min-w-0" readonly value="${shareLink(s)}" />

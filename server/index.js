@@ -159,7 +159,8 @@ app.get('/api/public/game-servers/:id', async (req, res) => {
     const showDetails = visibility === 'public' || !!user;
     const base = { id: s.id, name: s.name, game: s.game, label: s.label, emoji: s.emoji, status: s.status, visibility, description: s.description };
     res.json(showDetails
-      ? { ...base, serverIP: s.serverIP, port: s.port, password: s.password, gameVersion: s.gameVersion }
+      ? { ...base, serverIP: s.serverIP, port: s.port, password: s.password, gameVersion: s.gameVersion,
+          modPlatform: s.modPlatform, mods: s.mods, modpackUrl: s.modpackUrl, loader: s.loader, instructions: s.instructions }
       : base);
   } catch (err) {
     res.status(502).json({ error: 'Could not reach game server service' });

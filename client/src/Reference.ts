@@ -2,7 +2,57 @@
 
 interface User { username: string; role?: string; }
 
-type SubTab = 'wiki' | 'pokedex' | 'ror2' | 'controls';
+type SubTab = 'wiki' | 'pokedex' | 'ror2' | 'controls' | 'setup';
+
+interface SetupGuide { game: string; emoji: string; steps: string[]; }
+
+const SETUP_GUIDES: SetupGuide[] = [
+  { game: 'Terraria (Vanilla)', emoji: '🌳', steps: [
+    'Open Terraria.',
+    'Click Multiplayer → Join via IP.',
+    'Enter the server IP and port shown on the server card.',
+    'Enter the password if one is listed.',
+  ]},
+  { game: 'Terraria (tModLoader)', emoji: '⚙️', steps: [
+    'Install tModLoader free from Steam (search "tModLoader").',
+    'Open tModLoader → Workshop → Mod Browser.',
+    'Enable exactly the mods listed on the server card, then click Reload Mods.',
+    'Go to Multiplayer → Join via IP and enter the address.',
+    'Your enabled mods must match the server exactly or you will be kicked.',
+  ]},
+  { game: 'Minecraft (Vanilla)', emoji: '⛏️', steps: [
+    'Open the Minecraft Launcher and launch the version listed on the card.',
+    'Click Multiplayer → Add Server.',
+    'Paste the server address (IP:port).',
+    'Click Done, then join.',
+  ]},
+  { game: 'Minecraft (Modded)', emoji: '🧱', steps: [
+    'Install the modpack + loader (Forge/Fabric) for the version listed.',
+    'Use the modpack download link on the card if provided.',
+    'Launch through a modpack launcher (CurseForge, Prism, ATLauncher).',
+    'Multiplayer → Add Server → paste the address.',
+    'You must use the exact same modpack version as the server.',
+  ]},
+  { game: 'Risk of Rain 2', emoji: '🌧️', steps: [
+    'Install r2modman (Thunderstore Mod Manager): thunderstore.io/package/ebkr/r2modman/',
+    'Open r2modman → select Risk of Rain 2 → create a profile.',
+    'Install each mod listed on the server card.',
+    'Launch the game through r2modman (not directly from Steam).',
+    'In-game: Multiplayer → Join → Direct Connection → enter the address.',
+  ]},
+  { game: 'Stardew Valley', emoji: '🌾', steps: [
+    'Install SMAPI: smapi.io',
+    'Install each Nexus mod listed on the card into [Stardew Valley]/Mods/.',
+    'Launch through SMAPI (not directly from Steam).',
+    'Load a farm, then Co-op → Join LAN Game → enter the address.',
+  ]},
+  { game: "Garry's Mod", emoji: '🔫', steps: [
+    'Subscribe to the Workshop collection on the card (installs all addons).',
+    "Launch Garry's Mod.",
+    'Open the console with ~ and type: connect <address>',
+    'Or use Find Multiplayer Game and search for the server name.',
+  ]},
+];
 
 const GAMES = [
   { id: 'terraria',  label: 'Terraria',        emoji: '🌿' },
@@ -412,6 +462,27 @@ function renderControls(container: HTMLElement, user: User | null) {
   render();
 }
 
+// ── Setup Guides ──────────────────────────────────────────────────────────────
+
+function renderSetupGuides(container: HTMLElement) {
+  container.innerHTML = `
+    <p class="text-sm text-gray-500 mb-5 leading-relaxed max-w-2xl">
+      General setup for connecting to our game servers. Each server's own page lists the
+      exact IP, port, password, and required mods — these are the one-time client steps.
+    </p>
+    <div class="flex flex-col gap-3">
+      ${SETUP_GUIDES.map(g => `
+        <div class="bg-gray-900 border border-gray-700 rounded-xl p-4">
+          <h3 class="text-base font-bold text-white mb-3 flex items-center gap-2"><span class="text-xl">${g.emoji}</span> ${g.game}</h3>
+          <ol class="list-decimal list-inside marker:text-gray-600">
+            ${g.steps.map(s => `<li class="text-sm text-gray-400 leading-relaxed mb-1.5">${s}</li>`).join('')}
+          </ol>
+        </div>
+      `).join('')}
+    </div>
+  `;
+}
+
 // ── Root Reference panel ──────────────────────────────────────────────────────
 
 export function renderReference(user: User | null): HTMLElement {
@@ -425,6 +496,7 @@ export function renderReference(user: User | null): HTMLElement {
     { id: 'pokedex',  label: 'Pokédex'    },
     { id: 'ror2',     label: 'RoR2 Chars' },
     { id: 'controls', label: 'Controls'   },
+    { id: 'setup',    label: 'Setup Guides' },
   ];
 
   function render() {
@@ -447,6 +519,7 @@ export function renderReference(user: User | null): HTMLElement {
     if (activeTab === 'pokedex')  renderPokedex(content);
     if (activeTab === 'ror2')     renderRor2Chars(content);
     if (activeTab === 'controls') renderControls(content, user);
+    if (activeTab === 'setup')    renderSetupGuides(content);
   }
 
   render();
