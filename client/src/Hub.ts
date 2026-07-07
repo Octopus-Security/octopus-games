@@ -1,6 +1,6 @@
 import { logout, type User } from './auth';
 import { renderReference } from './Reference';
-import { openShareModal } from './serverShareCard';
+import { openShareModal, type ShareMod } from './serverShareCard';
 import { launchOctopusPunch } from './games/octopus-punch/index';
 import { launchMinesweeper } from './games/minesweeper/index';
 import { launchSudoku } from './games/sudoku/index';
@@ -35,6 +35,11 @@ interface GameServer {
   password?: string;
   gameVersion?: string;
   description?: string;
+  modPlatform?: string | null;
+  mods?: ShareMod[];
+  modpackUrl?: string;
+  loader?: string;
+  instructions?: string[];
 }
 
 const GAMES: GameDef[] = [
@@ -143,6 +148,108 @@ function statusBadge(status: string): string {
   return '<span class="px-2 py-0.5 rounded-full text-xs font-medium bg-gray-800 text-gray-500 border border-gray-700">Unknown</span>';
 }
 
+interface AccountRow { id: number; username: string; role: string; }
+let accountsCache: AccountRow[] | null = null;
+async function fetchAccounts(): Promise<AccountRow[]> {
+  if (accountsCache) return accountsCache;
+  try {
+    const r = await fetch('/api/admin/users');
+    accountsCache = r.ok ? await r.json() : [];
+  } catch { accountsCache = []; }
+  return accountsCache!;
+}
+
+// Searchable chip selector for the whitelist. Renders into `mount`, seeded
+// with `initial` usernames; getValue() returns the current comma-joined list.
+// Falls back to a plain text input if the account list can't be fetched.
+function buildWhitelistPicker(mount: HTMLElement, initial: string): { getValue: () => string } {
+  const selected = initial.split(',').map(u => u.trim()).filter(Boolean);
+
+  mount.innerHTML = '';
+  const wrap = document.createElement('div');
+  wrap.className = 'flex flex-col gap-2 w-full';
+  mount.appendChild(wrap);
+
+  fetchAccounts().then(accounts => {
+    if (!accounts.length) {
+      // No account list available — plain comma-separated fallback.
+      const input = document.createElement('input');
+      input.type = 'text';
+      input.value = selected.join(',');
+      input.placeholder = 'user1,user2';
+      input.className = 'w-full text-xs bg-gray-800 border border-gray-700 rounded px-2 py-1 text-gray-300 outline-none';
+      wrap.appendChild(input);
+      getValueImpl = () => input.value;
+      return;
+    }
+
+    const chips = document.createElement('div');
+    chips.className = 'flex flex-wrap gap-1';
+    const searchWrap = document.createElement('div');
+    searchWrap.className = 'relative';
+    const search = document.createElement('input');
+    search.type = 'text';
+    search.placeholder = 'Search accounts to add…';
+    search.className = 'w-full text-xs bg-gray-800 border border-gray-700 rounded px-2 py-1 text-gray-300 outline-none';
+    const menu = document.createElement('div');
+    menu.className = 'absolute left-0 right-0 top-full mt-1 bg-gray-900 border border-gray-700 rounded-lg max-h-48 overflow-y-auto z-10 hidden';
+    searchWrap.appendChild(search);
+    searchWrap.appendChild(menu);
+    wrap.appendChild(chips);
+    wrap.appendChild(searchWrap);
+
+    function drawChips() {
+      chips.innerHTML = '';
+      if (!selected.length) {
+        chips.innerHTML = '<span class="text-xs text-gray-600">No accounts selected yet.</span>';
+      }
+      selected.forEach(u => {
+        const chip = document.createElement('span');
+        chip.className = 'inline-flex items-center gap-1 text-xs bg-blue-900/50 text-blue-200 border border-blue-800 rounded-full px-2 py-0.5';
+        chip.innerHTML = `${u} <button class="text-blue-300 hover:text-white leading-none">×</button>`;
+        chip.querySelector('button')!.addEventListener('click', () => {
+          const i = selected.indexOf(u);
+          if (i > -1) selected.splice(i, 1);
+          drawChips();
+        });
+        chips.appendChild(chip);
+      });
+    }
+
+    function drawMenu() {
+      const q = search.value.trim().toLowerCase();
+      const matches = accounts
+        .filter(a => !selected.includes(a.username))
+        .filter(a => !q || a.username.toLowerCase().includes(q))
+        .slice(0, 30);
+      menu.innerHTML = '';
+      if (!matches.length) { menu.classList.add('hidden'); return; }
+      matches.forEach(a => {
+        const item = document.createElement('button');
+        item.className = 'block w-full text-left text-xs text-gray-300 hover:bg-gray-800 px-2 py-1.5';
+        item.textContent = a.username + (a.role === 'admin' ? ' (admin)' : '');
+        item.addEventListener('click', () => {
+          selected.push(a.username);
+          search.value = '';
+          menu.classList.add('hidden');
+          drawChips();
+        });
+        menu.appendChild(item);
+      });
+      menu.classList.remove('hidden');
+    }
+
+    search.addEventListener('focus', drawMenu);
+    search.addEventListener('input', drawMenu);
+    search.addEventListener('blur', () => setTimeout(() => menu.classList.add('hidden'), 150));
+    drawChips();
+    getValueImpl = () => selected.join(',');
+  });
+
+  let getValueImpl: () => string = () => selected.join(',');
+  return { getValue: () => getValueImpl() };
+}
+
 function renderServerCard(s: GameServer, user: User | null, isAdmin: boolean): HTMLElement {
   const card = document.createElement('div');
   card.className = 'bg-gray-900 border border-gray-700 rounded-2xl p-5 flex flex-col gap-3';
@@ -179,9 +286,9 @@ function renderServerCard(s: GameServer, user: User | null, isAdmin: boolean): H
           </select>
           <button data-server-id="${s.id}" class="save-visibility-btn text-xs px-2 py-1 bg-blue-700 hover:bg-blue-600 text-white rounded transition-colors">Save</button>
         </div>
-        <div class="whitelist-wrap flex items-center gap-2 ${vis === 'whitelist' ? '' : 'hidden'}">
-          <span class="text-xs text-gray-600 shrink-0">Allowed:</span>
-          <input type="text" data-server-id="${s.id}" class="allowed-input flex-1 text-xs bg-gray-800 border border-gray-700 rounded px-2 py-1 text-gray-300 outline-none min-w-0" placeholder="user1,user2" value="${s.allowedUsers || ''}"/>
+        <div class="whitelist-wrap flex flex-col gap-1 ${vis === 'whitelist' ? '' : 'hidden'}">
+          <span class="text-xs text-gray-600">Accounts allowed to see this server:</span>
+          <div class="whitelist-mount"></div>
         </div>
       </div>`
     : '';
@@ -208,9 +315,11 @@ function renderServerCard(s: GameServer, user: User | null, isAdmin: boolean): H
   card.querySelector('.share-btn')?.addEventListener('click', () => openShareModal(s));
 
   if (isAdmin) {
-    // Toggle the whitelist input based on the selected visibility
     const select = card.querySelector('.visibility-select') as HTMLSelectElement;
     const whitelistWrap = card.querySelector('.whitelist-wrap') as HTMLElement;
+    const mount = card.querySelector('.whitelist-mount') as HTMLElement;
+    const picker = buildWhitelistPicker(mount, s.allowedUsers || '');
+
     select?.addEventListener('change', () => {
       whitelistWrap?.classList.toggle('hidden', select.value !== 'whitelist');
     });
@@ -218,14 +327,15 @@ function renderServerCard(s: GameServer, user: User | null, isAdmin: boolean): H
     card.querySelector('.save-visibility-btn')?.addEventListener('click', async (e) => {
       const btn = e.target as HTMLButtonElement;
       const id = btn.dataset.serverId;
-      const vis = (card.querySelector(`.visibility-select[data-server-id="${id}"]`) as HTMLSelectElement)?.value;
-      const allowed = (card.querySelector(`.allowed-input[data-server-id="${id}"]`) as HTMLInputElement)?.value;
+      const visibility = select?.value;
+      // Only send a whitelist when that mode is selected.
+      const allowedUsers = visibility === 'whitelist' ? picker.getValue() : (s.allowedUsers || '');
       btn.textContent = '…';
       try {
         await fetch(`/api/admin/game-servers/${id}/visibility`, {
           method: 'PATCH',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ visibility: vis, allowedUsers: allowed }),
+          body: JSON.stringify({ visibility, allowedUsers }),
         });
         btn.textContent = '✓';
         setTimeout(() => { btn.textContent = 'Save'; }, 1500);

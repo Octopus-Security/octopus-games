@@ -118,8 +118,16 @@ app.get('/api/public/game-servers', async (req, res) => {
 
     const result = filtered.map(s => {
       const base = { id: s.id, name: s.name, game: s.game, label: s.label, emoji: s.emoji, status: s.status, visibility: s.visibility };
+      if (isAdmin) base.allowedUsers = s.allowedUsers; // whitelist only exposed to admin
       if (user) {
-        return { ...base, serverIP: s.serverIP, port: s.port, password: s.password, gameVersion: s.gameVersion, description: s.description };
+        // Full connection + mod/instruction data so the Share modal on each
+        // card matches the standalone /server/:id page.
+        return {
+          ...base, serverIP: s.serverIP, port: s.port, password: s.password,
+          gameVersion: s.gameVersion, description: s.description,
+          modPlatform: s.modPlatform, mods: s.mods, modpackUrl: s.modpackUrl,
+          loader: s.loader, instructions: s.instructions,
+        };
       }
       return base;
     });
@@ -257,6 +265,22 @@ app.patch('/api/admin/game-servers/:id/visibility', requireAdmin, async (req, re
     res.status(r.status).json(r.data);
   } catch (err) {
     res.status(502).json({ error: 'Could not reach game server service' });
+  }
+});
+
+// Account list for the whitelist search/select (admin only). Proxies auth,
+// forwarding the admin's own token. Returns just [{id, username, role}].
+// Degrades to [] if auth rejects/doesn't reach — the UI then falls back to
+// free-text entry instead of a picker.
+app.get('/api/admin/users', requireAdmin, async (req, res) => {
+  try {
+    const r = await axios.get(`${AUTH_INTERNAL_URL}/api/auth/users`, {
+      headers: { Authorization: `Bearer ${req.user.token}` }, timeout: 5000,
+    });
+    const users = (r.data?.users || r.data || []).map(u => ({ id: u.id, username: u.username, role: u.role }));
+    res.json(users);
+  } catch {
+    res.json([]);
   }
 });
 

@@ -1,7 +1,7 @@
 // Shareable server card: Discord/plain-text formats + a share modal.
 // Mirrors the copyable card format used in cortex's admin panel.
 
-export interface ShareMod { name: string; url: string; }
+export interface ShareMod { name: string; url: string; version?: string | null; }
 
 export interface ShareServer {
   id: number;
@@ -36,7 +36,7 @@ export function modsBlockHtml(s: ShareServer): string {
     const label = PLATFORM_LABELS[s.modPlatform || ''] || 'Required mods';
     parts.push(`<p class="text-xs text-gray-600 uppercase tracking-wide mb-2">${label}</p>`);
     parts.push('<div class="flex flex-col gap-1 mb-4">' + s.mods.map(m =>
-      `<a href="${m.url}" target="_blank" rel="noopener" class="text-sm text-blue-400 hover:underline break-all">↗ ${m.name}</a>`
+      `<a href="${m.url}" target="_blank" rel="noopener" class="text-sm text-blue-400 hover:underline break-all">↗ ${m.name}${m.version ? ` <span class="text-gray-500">v${m.version}</span>` : ''}</a>`
     ).join('') + '</div>');
   }
   if (s.modPlatform === 'modpack' && s.modpackUrl) {
@@ -71,7 +71,7 @@ export function buildDiscord(s: ShareServer): string {
     lines.push('📦  **Mods:**');
     // Discord only auto-links raw URLs in plain messages (masked [text](url)
     // links don't render outside bot embeds), so list name + bare URL per line.
-    s.mods.forEach(m => lines.push(`• ${m.name}${m.url ? ` — ${m.url}` : ''}`));
+    s.mods.forEach(m => lines.push(`• ${m.name}${m.version ? ` v${m.version}` : ''}${m.url ? ` — ${m.url}` : ''}`));
   }
   lines.push(sep);
   return lines.join('\n');
@@ -87,7 +87,7 @@ export function buildPlain(s: ShareServer): string {
   if (s.modPlatform === 'modpack' && s.modpackUrl) lines.push(`Modpack: ${s.modpackUrl}`);
   if (s.mods && s.mods.length) {
     lines.push('Mods:');
-    s.mods.forEach(m => lines.push(`- ${m.name}${m.url ? ` — ${m.url}` : ''}`));
+    s.mods.forEach(m => lines.push(`- ${m.name}${m.version ? ` v${m.version}` : ''}${m.url ? ` — ${m.url}` : ''}`));
   }
   return lines.join('\n');
 }
