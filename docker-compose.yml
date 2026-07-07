@@ -11,6 +11,11 @@ services:
       - SESSION_SECRET=${SESSION_SECRET}
       - CORTEX_URL=http://octopus-cortex:3010
       - AUTH_SERVICE_URL=http://octopus-auth:3002
+      # Must match cortex's INTERNAL_SECRET exactly, or cortex's
+      # /api/internal/game-servers returns 403 and the games site shows
+      # "No public servers" (games turns the 403 into a 502). Portainer only
+      # passes a var the container can see if there's a line for it here.
+      - INTERNAL_SECRET=${INTERNAL_SECRET:-}
     volumes:
       - games_data:/app/data
     networks:
