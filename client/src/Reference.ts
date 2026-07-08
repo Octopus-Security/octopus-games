@@ -104,6 +104,41 @@ function chip(label: string, active: boolean, onClick: () => void, extra = ''): 
   return b;
 }
 
+// Reusable, persisted grid-density control for any card grid — a small
+// +/− stepper remembered per grid `key` in localStorage, so each grid can
+// keep its own preferred column count across visits.
+function buildGridColumnsControl(key: string, defaultCols: number, onChange: (cols: number) => void): { el: HTMLElement; get: () => number } {
+  const storeKey = `gridCols:${key}`;
+  let cols = parseInt(localStorage.getItem(storeKey) || '', 10) || defaultCols;
+
+  const wrap = document.createElement('div');
+  wrap.className = 'flex items-center gap-2';
+  const label = document.createElement('span');
+  label.textContent = 'Columns:';
+  label.className = 'text-xs text-gray-600';
+  const btnClass = 'w-6 h-6 flex items-center justify-center text-xs bg-gray-800 border border-gray-700 rounded text-gray-400 hover:text-white hover:border-gray-600 transition-colors disabled:opacity-30 disabled:pointer-events-none';
+  const minusBtn = document.createElement('button');
+  minusBtn.textContent = '−';
+  minusBtn.className = btnClass;
+  const countEl = document.createElement('span');
+  countEl.className = 'text-xs text-gray-300 w-4 text-center font-mono';
+  const plusBtn = document.createElement('button');
+  plusBtn.textContent = '+';
+  plusBtn.className = btnClass;
+
+  function render() {
+    countEl.textContent = String(cols);
+    minusBtn.disabled = cols <= 2;
+    plusBtn.disabled = cols >= 8;
+  }
+  minusBtn.addEventListener('click', () => { if (cols > 2) { cols--; localStorage.setItem(storeKey, String(cols)); render(); onChange(cols); } });
+  plusBtn.addEventListener('click', () => { if (cols < 8) { cols++; localStorage.setItem(storeKey, String(cols)); render(); onChange(cols); } });
+  render();
+
+  wrap.append(label, minusBtn, countEl, plusBtn);
+  return { el: wrap, get: () => cols };
+}
+
 // ── Wiki Search ───────────────────────────────────────────────────────────────
 
 function renderWikiSearch(container: HTMLElement) {
@@ -194,31 +229,40 @@ function renderWikiSearch(container: HTMLElement) {
 
 // ── Pokédex ───────────────────────────────────────────────────────────────────
 
+interface DexEntry { id: number; name: string; }
+
+let dexListCache: DexEntry[] | null = null; // module-level: fetched once per page load
+
 function renderPokedex(container: HTMLElement) {
   let shiny = false;
+  let cameFromList = false; // shows "← Back to list" only if the list was actually open
+  let listFilter = '';
 
   container.innerHTML = `
     <div class="flex gap-2 mb-5">
       <input id="pokeInput" type="text" placeholder="Pokémon name or number…"
         class="flex-1 bg-gray-800 border border-gray-700 focus:border-blue-500 rounded-lg px-3 py-2 text-sm text-white outline-none placeholder:text-gray-600 min-w-0" />
       <button id="pokeBtn" class="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-lg text-sm shrink-0 transition-colors">Look up</button>
+      <button id="pokeAllBtn" class="px-4 py-2 bg-gray-800 hover:bg-gray-700 text-gray-300 border border-gray-700 rounded-lg text-sm shrink-0 transition-colors">All</button>
     </div>
     <p id="pokeErr" class="text-sm text-red-400 hidden mb-3"></p>
-    <div id="pokeCard"></div>
+    <div id="pokeBody"></div>
   `;
 
-  const input  = container.querySelector('#pokeInput') as HTMLInputElement;
-  const btn    = container.querySelector('#pokeBtn') as HTMLButtonElement;
-  const errEl  = container.querySelector('#pokeErr') as HTMLElement;
-  const card   = container.querySelector('#pokeCard') as HTMLElement;
+  const input   = container.querySelector('#pokeInput') as HTMLInputElement;
+  const btn     = container.querySelector('#pokeBtn') as HTMLButtonElement;
+  const allBtn  = container.querySelector('#pokeAllBtn') as HTMLButtonElement;
+  const errEl   = container.querySelector('#pokeErr') as HTMLElement;
+  const body    = container.querySelector('#pokeBody') as HTMLElement;
 
-  async function lookup() {
-    const q = input.value.trim();
+  async function lookup(name?: string) {
+    const q = (name ?? input.value).trim();
     if (!q) return;
+    if (name) input.value = name; // reflect the clicked entry in the search box
     btn.textContent = '…';
     btn.setAttribute('disabled', '');
     errEl.classList.add('hidden');
-    card.innerHTML = '';
+    body.innerHTML = '';
     shiny = false;
     try {
       const d = await apiFetch<{
@@ -241,7 +285,8 @@ function renderPokedex(container: HTMLElement) {
         }).join('');
         const abilities = d.abilities.map(a => `<span class="text-xs bg-gray-700 rounded px-2 py-0.5 capitalize">${a}</span>`).join(' ');
 
-        card.innerHTML = `
+        body.innerHTML = `
+          ${cameFromList ? '<button id="backToList" class="text-xs text-gray-500 hover:text-gray-300 border border-gray-700 rounded px-2 py-1 mb-4">← Back to list</button>' : ''}
           <div class="bg-gray-900 border border-gray-700 rounded-xl p-5 max-w-lg">
             <div class="flex gap-4 mb-4 flex-wrap">
               ${spriteUrl ? `<img src="${spriteUrl}" class="w-24 h-24 object-contain image-rendering-pixelated bg-gray-800 rounded-lg shrink-0" style="image-rendering:pixelated" />` : ''}
@@ -262,7 +307,8 @@ function renderPokedex(container: HTMLElement) {
             <a href="${d.url}" target="_blank" rel="noopener" class="text-xs text-blue-400 hover:underline mt-3 block">View on Bulbapedia ↗</a>
           </div>`;
 
-        card.querySelector('#shinyToggle')?.addEventListener('click', () => { shiny = !shiny; renderCard(); });
+        body.querySelector('#shinyToggle')?.addEventListener('click', () => { shiny = !shiny; renderCard(); });
+        body.querySelector('#backToList')?.addEventListener('click', () => renderList());
       }
       renderCard();
     } catch (e: unknown) { errEl.textContent = (e as Error).message; errEl.classList.remove('hidden'); }
@@ -270,8 +316,67 @@ function renderPokedex(container: HTMLElement) {
     btn.removeAttribute('disabled');
   }
 
-  btn.addEventListener('click', lookup);
-  input.addEventListener('keydown', e => e.key === 'Enter' && lookup());
+  async function renderList() {
+    cameFromList = true;
+    input.value = '';
+    errEl.classList.add('hidden');
+    body.innerHTML = '<p class="text-sm text-gray-600">Loading full dex…</p>';
+
+    if (!dexListCache) {
+      try {
+        dexListCache = await apiFetch<DexEntry[]>('/api/wiki/pokedex-list');
+      } catch (e: unknown) {
+        body.innerHTML = '';
+        errEl.textContent = (e as Error).message;
+        errEl.classList.remove('hidden');
+        return;
+      }
+    }
+
+    const cols = buildGridColumnsControl('pokedex', 5, () => draw());
+    body.innerHTML = '';
+
+    const topRow = document.createElement('div');
+    topRow.className = 'flex items-center justify-between gap-3 flex-wrap mb-4';
+    const filterInput = document.createElement('input');
+    filterInput.type = 'text';
+    filterInput.placeholder = `Filter ${dexListCache.length} Pokémon…`;
+    filterInput.value = listFilter;
+    filterInput.className = 'flex-1 bg-gray-800 border border-gray-700 focus:border-blue-500 rounded-lg px-3 py-2 text-sm text-white outline-none placeholder:text-gray-600 min-w-0 max-w-xs';
+    filterInput.addEventListener('input', () => { listFilter = filterInput.value.toLowerCase(); draw(); });
+    topRow.appendChild(filterInput);
+    topRow.appendChild(cols.el);
+    body.appendChild(topRow);
+
+    const grid = document.createElement('div');
+    grid.className = 'grid gap-2';
+    body.appendChild(grid);
+
+    function draw() {
+      grid.style.gridTemplateColumns = `repeat(${cols.get()}, minmax(0, 1fr))`;
+      grid.innerHTML = '';
+      const q = listFilter.trim();
+      const filtered = dexListCache!.filter(p =>
+        !q || p.name.toLowerCase().includes(q) || String(p.id).includes(q)
+      );
+      if (!filtered.length) {
+        grid.innerHTML = '<p class="text-sm text-gray-600 col-span-full">No matches.</p>';
+        return;
+      }
+      filtered.forEach(p => {
+        const btn2 = document.createElement('button');
+        btn2.className = 'text-left bg-gray-900 border border-gray-700 hover:border-blue-500 rounded-lg px-3 py-2 transition-colors';
+        btn2.innerHTML = `<span class="block text-xs text-gray-600 font-mono">#${String(p.id).padStart(4, '0')}</span><span class="block text-sm text-white capitalize truncate">${p.name}</span>`;
+        btn2.addEventListener('click', () => lookup(p.name));
+        grid.appendChild(btn2);
+      });
+    }
+    draw();
+  }
+
+  btn.addEventListener('click', () => { cameFromList = false; lookup(); });
+  allBtn.addEventListener('click', () => renderList());
+  input.addEventListener('keydown', e => { if (e.key === 'Enter') { cameFromList = false; lookup(); } });
 }
 
 // ── RoR2 Characters ───────────────────────────────────────────────────────────

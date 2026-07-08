@@ -282,6 +282,29 @@ router.get('/pokedex', async (req, res) => {
   catch (err) { res.status(err.message.includes('not found') ? 404 : 500).json({ error: err.message }); }
 });
 
+// Full national dex list (id + name only) for the "All" browse grid. The
+// species list is effectively static, so cache it for a day rather than
+// re-fetching ~1300 entries from PokeAPI on every click.
+let pokedexListCache = null; // { data, exp }
+router.get('/pokedex-list', async (req, res) => {
+  if (pokedexListCache && pokedexListCache.exp > Date.now()) {
+    return res.json(pokedexListCache.data);
+  }
+  try {
+    const r = await axios.get('https://pokeapi.co/api/v2/pokemon-species?limit=100000', { timeout: 15000 });
+    const list = (r.data?.results || [])
+      .map(s => {
+        const m = s.url.match(/\/pokemon-species\/(\d+)\//);
+        return { id: m ? parseInt(m[1], 10) : 0, name: s.name };
+      })
+      .sort((a, b) => a.id - b.id);
+    pokedexListCache = { data: list, exp: Date.now() + 24 * 60 * 60 * 1000 };
+    res.json(list);
+  } catch (err) {
+    res.status(502).json({ error: 'Could not reach PokeAPI' });
+  }
+});
+
 router.get('/ror2-chars', (_req, res) => res.json(ROR2_CHARACTERS));
 
 router.get('/games', (_req, res) => res.json(Object.entries(WIKIS).map(([id, w]) => ({ id, name: w.name }))));
