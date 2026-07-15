@@ -119,9 +119,11 @@ app.get('/api/public/game-servers', async (req, res) => {
     const result = filtered.map(s => {
       const base = { id: s.id, name: s.name, game: s.game, label: s.label, emoji: s.emoji, status: s.status, visibility: s.visibility };
       if (isAdmin) base.allowedUsers = s.allowedUsers; // whitelist only exposed to admin
-      if (user) {
-        // Full connection + mod/instruction data so the Share modal on each
-        // card matches the standalone /server/:id page.
+      // A public server reveals full connection details to ANYONE (that's the
+      // point of a public card) — same rule as the standalone /server/:id page.
+      // Members/whitelist servers only reveal details to a logged-in viewer who
+      // already passed the filter above.
+      if (user || s.visibility === 'public') {
         return {
           ...base, serverIP: s.serverIP, port: s.port, password: s.password,
           gameVersion: s.gameVersion, description: s.description,

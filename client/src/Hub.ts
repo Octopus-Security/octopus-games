@@ -254,7 +254,11 @@ function renderServerCard(s: GameServer, user: User | null, isAdmin: boolean): H
   const card = document.createElement('div');
   card.className = 'bg-gray-900 border border-gray-700 rounded-2xl p-5 flex flex-col gap-3';
 
-  const connectionInfo = user && s.serverIP
+  // The API only sends serverIP when this viewer may see it (public → anyone,
+  // members/whitelist → the logged-in allowed user). So key the details off its
+  // presence, not on being logged in — that lets public server cards show their
+  // connection info to anonymous visitors.
+  const connectionInfo = s.serverIP
     ? `<div class="mt-1 space-y-1">
         <div class="flex items-center gap-2">
           <span class="text-xs text-gray-500 w-16 shrink-0">Address</span>
