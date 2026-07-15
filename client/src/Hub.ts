@@ -1,4 +1,4 @@
-import { logout, type User } from './auth';
+import { logout, goToLogin, type User } from './auth';
 import { renderReference } from './Reference';
 import { openShareModal, type ShareMod } from './serverShareCard';
 import { launchOctopusPunch } from './games/octopus-punch/index';
@@ -369,7 +369,8 @@ export function renderHub(user: User | null, onRefresh: () => void): HTMLElement
         ${user
           ? `<span class="text-sm text-gray-400">${user.username}${isAdmin ? ' <span class="text-xs text-blue-400">(admin)</span>' : ''}</span>
              <button id="logoutBtn" class="text-sm text-gray-500 hover:text-gray-300 transition-colors">Sign out</button>`
-          : `<button id="loginBtn" class="text-sm px-3 py-1 bg-blue-700 hover:bg-blue-600 text-white rounded-lg transition-colors">Sign in</button>`
+          : `<button id="registerBtn" class="text-sm text-gray-400 hover:text-white transition-colors">Create account</button>
+             <button id="loginBtn" class="text-sm px-3 py-1 bg-blue-700 hover:bg-blue-600 text-white rounded-lg transition-colors">Sign in</button>`
         }
       </div>
     </nav>
@@ -400,26 +401,6 @@ export function renderHub(user: User | null, onRefresh: () => void): HTMLElement
         <p id="emptyMsg" class="hidden text-center text-gray-600 py-16">No games found.</p>
       </div>
     </main>
-
-    <!-- Login modal -->
-    <div id="loginModal" class="hidden fixed inset-0 bg-black/70 flex items-center justify-center z-50">
-      <div class="bg-gray-900 border border-gray-800 rounded-2xl p-8 w-full max-w-sm relative">
-        <button id="closeModal" class="absolute top-4 right-4 text-gray-500 hover:text-gray-300 text-xl">✕</button>
-        <div class="text-center mb-6">
-          <div class="text-4xl mb-2">🐙</div>
-          <h2 class="text-xl font-bold">Sign in</h2>
-          <p class="text-gray-500 text-sm mt-1">Sign in to see server connection details</p>
-        </div>
-        <div id="loginErr" class="hidden mb-4 px-4 py-3 bg-red-900/30 border border-red-700 rounded-lg text-red-300 text-sm"></div>
-        <form id="loginForm" class="space-y-4">
-          <input id="loginUsername" type="text" placeholder="Username" autocomplete="username"
-            class="w-full bg-gray-800 border border-gray-700 focus:border-blue-500 rounded-lg px-4 py-3 text-white outline-none placeholder:text-gray-600 text-sm" />
-          <input id="loginPassword" type="password" placeholder="Password" autocomplete="current-password"
-            class="w-full bg-gray-800 border border-gray-700 focus:border-blue-500 rounded-lg px-4 py-3 text-white outline-none placeholder:text-gray-600 text-sm" />
-          <button type="submit" class="w-full py-3 bg-blue-600 hover:bg-blue-500 rounded-lg text-white font-semibold transition-colors">Sign in</button>
-        </form>
-      </div>
-    </div>
   `;
 
   // Tab switching
@@ -458,34 +439,9 @@ export function renderHub(user: User | null, onRefresh: () => void): HTMLElement
     onRefresh();
   });
 
-  const loginModal = el.querySelector('#loginModal') as HTMLElement;
-  el.querySelector('#loginBtn')?.addEventListener('click', () => loginModal.classList.remove('hidden'));
-  el.querySelector('#closeModal')?.addEventListener('click', () => loginModal.classList.add('hidden'));
-
-  const loginForm = el.querySelector('#loginForm') as HTMLFormElement;
-  const loginErr = el.querySelector('#loginErr') as HTMLElement;
-  loginForm?.addEventListener('submit', async (e) => {
-    e.preventDefault();
-    const username = (el.querySelector('#loginUsername') as HTMLInputElement).value;
-    const password = (el.querySelector('#loginPassword') as HTMLInputElement).value;
-    const btn = loginForm.querySelector('button')!;
-    btn.textContent = 'Signing in…';
-    btn.setAttribute('disabled', '');
-    const res = await fetch('/login', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ username, password }),
-    });
-    if (res.ok) {
-      onRefresh();
-    } else {
-      const body = await res.json().catch(() => ({})) as { error?: string };
-      loginErr.textContent = body.error || 'Login failed';
-      loginErr.classList.remove('hidden');
-      btn.textContent = 'Sign in';
-      btn.removeAttribute('disabled');
-    }
-  });
+  // Login/register happen on the central SSO page; both return here afterwards.
+  el.querySelector('#loginBtn')?.addEventListener('click', () => goToLogin(false));
+  el.querySelector('#registerBtn')?.addEventListener('click', () => goToLogin(true));
 
   // Servers
   const serverGrid = el.querySelector('#serverGrid') as HTMLElement;
@@ -599,7 +555,7 @@ export function renderHub(user: User | null, onRefresh: () => void): HTMLElement
       if (game.available && canPlay) {
         card.querySelector('.play-btn')!.addEventListener('click', (e) => {
           e.stopPropagation();
-          if (!user) loginModal.classList.remove('hidden');
+          if (!user) goToLogin(false);
           else game.launch(el, user);
         });
       }

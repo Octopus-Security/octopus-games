@@ -13,15 +13,15 @@ export async function getUser(): Promise<User | null> {
   }
 }
 
-export async function login(username: string, password: string): Promise<string | null> {
-  const res = await fetch('/login', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ username, password }),
-  });
-  if (res.ok) return null;
-  const body = await res.json().catch(() => ({}));
-  return (body as { error?: string }).error || 'Login failed';
+// Auth is centralized at auth.octopustechnology.net (single SSO login page that
+// sets the shared octopus_sso cookie). Games has no local login form — it sends
+// the user to the central page and comes back to where they were.
+export const AUTH_BASE = 'https://auth.octopustechnology.net';
+
+export function goToLogin(register = false): void {
+  const back = encodeURIComponent(location.href);
+  const path = register ? '/register' : '/login';
+  location.href = `${AUTH_BASE}${path}?redirect=${back}`;
 }
 
 export async function logout(): Promise<void> {
