@@ -1,4 +1,5 @@
 const express = require('express');
+const { createSSOMiddleware } = require('@octopus-security/auth-client');
 const axios = require('axios');
 const path = require('path');
 const { initDb, Setting } = require('./database');
@@ -15,45 +16,29 @@ const ADMIN_USERNAME = process.env.ADMIN_USERNAME || 'psychopathy';
 app.use(express.json());
 
 // ── Stateless SSO auth ────────────────────────────────────────────────────────
-// Verify the shared octopus_sso cookie against octopus-auth (cached) → req.user.
+//
+// From @octopus-security/auth-client. What was here — parse the cookie, POST it
+// to /api/auth/verify, cache the answer for five minutes — was a near-identical
+// copy of the same code in cortex, shopper, math and planner. Five copies of one
+// security decision, and the reason session revocation could not be rolled out
+// fleet-wide: none of them ran the package's code, so improving the package
+// improved nothing.
+//
+// Behaviour is deliberately unchanged: same remote confirmation, same five
+// minute window, same req.user fields the routes here already read. This app
+// serves public pages (game share links, modpack downloads) from the same
+// process, so the middleware sets req.user or does not and never rejects —
+// requireLogin decides what actually needs an account.
 const SSO_COOKIE      = 'octopus_sso';
 const AUTH_LOGIN_BASE = process.env.AUTH_PUBLIC_URL || AUTH_EXTERNAL_URL || 'https://auth.octopustechnology.net';
-const _verifyCache = new Map();
 
-function parseCookies(req) {
-  const out = {};
-  const header = req.headers.cookie;
-  if (!header) return out;
-  for (const part of header.split(';')) {
-    const i = part.indexOf('=');
-    if (i > -1) out[part.slice(0, i).trim()] = decodeURIComponent(part.slice(i + 1).trim());
-  }
-  return out;
-}
-
-async function verifyToken(token) {
-  const cached = _verifyCache.get(token);
-  if (cached && cached.exp > Date.now()) return cached.user;
-  try {
-    const r = await axios.post(`${AUTH_INTERNAL_URL}/api/auth/verify`, {}, {
-      headers: { Authorization: `Bearer ${token}` }, timeout: 5000,
-    });
-    if (r.data && r.data.valid && r.data.user) {
-      _verifyCache.set(token, { user: r.data.user, exp: Date.now() + 5 * 60 * 1000 });
-      return r.data.user;
-    }
-  } catch { /* invalid or auth unreachable → unauthenticated */ }
-  return null;
-}
-
-app.use(async (req, res, next) => {
-  const token = parseCookies(req)[SSO_COOKIE];
-  if (token) {
-    const user = await verifyToken(token);
-    if (user) req.user = { username: user.username, role: user.role, token };
-  }
-  next();
+const ssoSession = createSSOMiddleware({
+  baseUrl:    AUTH_INTERNAL_URL,
+  cacheTtlMs: 5 * 60 * 1000,
+  onUser:     (user, token) => ({ username: user.username, role: user.role, token }),
 });
+
+app.use(ssoSession);
 
 async function callAuth(endpoint, data) {
   try {

@@ -1,6 +1,11 @@
 services:
   octopus-games:
-    build: .
+    build:
+      context: .
+      args:
+        # Same GitHub Packages token the other auth-client consumers use.
+        # A stack variable reaches the BUILD only if it is named here.
+        NPM_TOKEN: ${NPM_TOKEN}
     container_name: octopus-games
     restart: unless-stopped
     ports:
