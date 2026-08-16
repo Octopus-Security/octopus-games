@@ -1,6 +1,7 @@
 {
   "name": "octopus-games-server",
   "version": "1.0.0",
+  "description": "Browser arcade (six games) plus a game reference wiki with crafting recipes, per-account goals and remappable controls",
   "main": "server/index.js",
   "scripts": {
     "start": "node server/index.js",
