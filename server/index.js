@@ -3,6 +3,7 @@ const { createSSOMiddleware } = require('@octopus-security/auth-client');
 const axios = require('axios');
 const path = require('path');
 const { initDb, Setting } = require('./database');
+const { BUILD, STARTED_AT } = require('./build');
 const gamesRouter = require('./routes/games');
 const wikiRouter  = require('./routes/wiki');
 const craftingRouter = require('./routes/crafting');
@@ -14,6 +15,20 @@ const AUTH_EXTERNAL_URL = process.env.AUTH_EXTERNAL_URL || '';
 const ADMIN_USERNAME = process.env.ADMIN_USERNAME || 'psychopathy';
 
 app.use(express.json());
+
+// ─── Health and deploy verification ──────────────────────────────────────────
+//
+// Both sit ahead of every auth gate on purpose: the questions they answer —
+// "is this up" and "is the running container the code I pushed" — have to be
+// answerable when a login is exactly what is broken. `unknown` is never
+// `current`.
+app.get('/health', (_req, res) => res.json({ ok: true, service: 'octopus-games' }));
+app.get('/api/build', (_req, res) => res.json({
+  ok: true,
+  service: 'octopus-games',
+  build: BUILD,
+  startedAt: STARTED_AT,
+}));
 
 // ── Stateless SSO auth ────────────────────────────────────────────────────────
 //
