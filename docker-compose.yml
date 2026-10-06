@@ -16,6 +16,9 @@ services:
       - SESSION_SECRET=${SESSION_SECRET}
       - CORTEX_URL=http://octopus-cortex:3010
       - AUTH_SERVICE_URL=http://octopus-auth:3002
+      # Which hub app this service is, for the per-user access gate (appAccess.js).
+      # The code defaults to the same slug; stated so changing it is a stack variable.
+      - APP_ACCESS_SLUG=${APP_ACCESS_SLUG:-games}
       # Must match cortex's INTERNAL_SECRET exactly, or cortex's
       # /api/internal/game-servers returns 403 and the games site shows
       # "No public servers" (games turns the 403 into a 502). Portainer only

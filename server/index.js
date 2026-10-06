@@ -4,6 +4,7 @@ const axios = require('axios');
 const path = require('path');
 const { initDb, Setting } = require('./database');
 const { BUILD, STARTED_AT } = require('./build');
+const { createAppGate } = require('./appAccess');
 const gamesRouter = require('./routes/games');
 const wikiRouter  = require('./routes/wiki');
 const craftingRouter = require('./routes/crafting');
@@ -12,6 +13,13 @@ const app = express();
 const PORT = process.env.PORT || 3013;
 const AUTH_INTERNAL_URL = process.env.AUTH_SERVICE_URL || 'http://octopus-auth:3002';
 const AUTH_EXTERNAL_URL = process.env.AUTH_EXTERNAL_URL || '';
+// May THIS signed-in account use games at all? Hiding the hub tile is
+// presentation; this is the enforcement (see appAccess.js).
+const appAccessGate = createAppGate({
+  authUrl: AUTH_INTERNAL_URL,
+  slug:    process.env.APP_ACCESS_SLUG || 'games',
+  appName: 'Games',
+});
 const ADMIN_USERNAME = process.env.ADMIN_USERNAME || 'psychopathy';
 
 app.use(express.json());
@@ -28,6 +36,8 @@ app.get('/api/build', (_req, res) => res.json({
   service: 'octopus-games',
   build: BUILD,
   startedAt: STARTED_AT,
+  // Read off the mounted gate, never typed here; absent when none is mounted.
+  ...(appAccessGate.slug ? { gate: appAccessGate.slug } : {}),
 }));
 
 // ── Stateless SSO auth ────────────────────────────────────────────────────────
@@ -54,6 +64,19 @@ const ssoSession = createSSOMiddleware({
 });
 
 app.use(ssoSession);
+
+// ── App access gate ───────────────────────────────────────────────────────────
+// After SSO, before every route, page and the static client. It only ever asks
+// about a SIGNED-IN account: this app deliberately serves public pages to guests
+// (share links, modpack downloads, wiki, public server listing, guest-mode
+// client), and those stay public. A signed-in person who has been denied is
+// refused everywhere except logout. The per-SERVER visibility rules (403 for a
+// viewer who may not see a server) are separate and unchanged; they run behind
+// this.
+app.use((req, res, next) => {
+  if (req.path === '/logout' || !req.user) return next();
+  return appAccessGate(req, res, next);
+});
 
 async function callAuth(endpoint, data) {
   try {
