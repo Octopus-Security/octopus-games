@@ -138,11 +138,11 @@ export function openShareModal(s: ShareServer): void {
       <div class="space-y-1 mb-4">
         <div class="flex items-center gap-2">
           <span class="text-xs text-gray-500 w-16 shrink-0">Address</span>
-          <code class="text-sm text-blue-300 font-mono bg-gray-800 px-2 py-0.5 rounded select-all">${addr(s)}</code>
+          <code class="text-sm text-blue-300 font-mono bg-gray-800 px-2 py-0.5 rounded select-all break-all min-w-0">${addr(s)}</code>
         </div>
         ${s.password ? `<div class="flex items-center gap-2">
           <span class="text-xs text-gray-500 w-16 shrink-0">Password</span>
-          <code class="text-sm text-yellow-300 font-mono bg-gray-800 px-2 py-0.5 rounded select-all">${s.password}</code>
+          <code class="text-sm text-yellow-300 font-mono bg-gray-800 px-2 py-0.5 rounded select-all break-all min-w-0">${s.password}</code>
         </div>` : ''}
         ${s.gameVersion ? `<div class="flex items-center gap-2">
           <span class="text-xs text-gray-500 w-16 shrink-0">Version</span>
