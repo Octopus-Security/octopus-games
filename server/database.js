@@ -58,9 +58,25 @@ const CraftingGoal = sequelize.define('CraftingGoal', {
   checked:  { type: DataTypes.TEXT, allowNull: false, defaultValue: '[]' },   // JSON [materialName,...]
 }, { tableName: 'CraftingGoals', timestamps: true });
 
+// Chess game model — for real-time games via WebSocket
+// The invite code is a 6-digit alphanumeric code (e.g., "A1B2C3")
+// White is the host (code creator), Black is the guest
+const ChessGame = sequelize.define('ChessGame', {
+  id: { type: DataTypes.INTEGER, primaryKey: true, autoIncrement: true },
+  inviteCode: { type: DataTypes.STRING(6), allowNull: false, unique: true },
+  whiteId: { type: DataTypes.STRING, allowNull: false },  // username of host (White)
+  blackId: { type: DataTypes.STRING, allowNull: true },   // username of guest (Black)
+  fen: { type: DataTypes.STRING, allowNull: false, defaultValue: 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1' },
+  pgn: { type: DataTypes.TEXT, allowNull: false, defaultValue: '' },
+  status: { type: DataTypes.STRING, allowNull: false, defaultValue: 'waiting' }, // waiting, active, finished
+  result: { type: DataTypes.STRING, allowNull: true }, // '1-0', '0-1', '1/2-1/2', or null
+  turn: { type: DataTypes.STRING, allowNull: false, defaultValue: 'w' }, // 'w' or 'b'
+  lastMoveAt: { type: DataTypes.DATE, allowNull: true },
+}, { tableName: 'ChessGames', timestamps: true });
+
 async function initDb() {
   await sequelize.authenticate();
   await sequelize.sync({ alter: true });
 }
 
-module.exports = { sequelize, GameSave, GameScore, Setting, GameControls, CraftingRecipe, CraftingGoal, initDb };
+module.exports = { sequelize, GameSave, GameScore, Setting, GameControls, CraftingRecipe, CraftingGoal, ChessGame, initDb };
