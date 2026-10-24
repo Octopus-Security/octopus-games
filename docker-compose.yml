@@ -9,7 +9,7 @@ services:
     container_name: octopus-games
     restart: unless-stopped
     ports:
-      - "3013:3013"
+      - "127.0.0.1:3013:3013"
     environment:
       - PORT=3013
       - NODE_ENV=production
