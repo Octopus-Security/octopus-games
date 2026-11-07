@@ -7,21 +7,26 @@ export interface LastShot {
   seat: number; shot: Shot; frameCount: number; tracks: (number[] | null)[]; frameDt: number; events: PoolEvent[];
   firstContact: number | null; pocketed: number[]; fouls: string[]; respotted: number[];
 }
+export type Variant = '8ball' | '9ball';
 export interface PoolState {
-  type: 'pool'; v: number; seed: number | string; balls: Ball[]; turn: number;
+  type: 'pool'; v: number; variant?: Variant; seed: number | string; balls: Ball[]; turn: number;
   groups: (Group | null)[]; breakShot: boolean; inHand: { kitchen: boolean } | null;
   called: number | null; over: boolean; winner: number | null; reason: string | null;
   shots: number; lastShot: LastShot | null;
 }
 export interface PoolView {
-  type: 'pool'; you: number | null; turn: number | null; over: boolean; winner: number | null;
+  type: 'pool'; variant: Variant; lowest: number | null; you: number | null; turn: number | null; over: boolean; winner: number | null;
   reason: string | null; balls: Ball[]; groups: (Group | null)[];
   targets: (string | null)[]; inHand: { kitchen: boolean } | null; breakShot: boolean;
   called: number | null; mustCall: boolean; shots: number; lastShot: LastShot | null;
 }
 export interface PoolStatus { turn: number | null; over: boolean; winner: number | null; reason: string | null }
 export class IllegalMove extends Error { code: string }
-export function initialState(seed?: number | string): PoolState;
+export function initialState(seed?: number | string, options?: { variant?: Variant }): PoolState;
+export function rackOrder9(seed: number | string): number[];
+export function lowestBall(balls: Ball[]): number | null;
+export const VARIANTS: Variant[];
+export const variants: Variant[];
 export function applyMove(state: PoolState, move: PoolMove, seat: number): { state: PoolState; events: PoolEvent[] };
 export function view(state: PoolState, seat?: number | null): PoolView;
 export function status(state: PoolState): PoolStatus;

@@ -52,6 +52,12 @@ function reasonText(reason: string | null): string {
 export interface ChessCtx {
   match: MatchState;
   send: (move: Record<string, unknown>) => Promise<string | null>;   // resolves to an error message, if any
+  /** Local play only: force the board orientation (true = black at the bottom). Default follows the seat. */
+  flip?: boolean;
+  /** Local play: no draw offers (there is nobody to accept one). */
+  local?: boolean;
+  /** Replaces the status line (for example "Computer is thinking"). */
+  statusOverride?: string | null;
 }
 
 /** Local UI state that survives re-renders from live updates. */
@@ -66,7 +72,7 @@ export function renderChess(root: HTMLElement, ctx: ChessCtx): void {
   const seat = m.you.seat;
   const playing = m.status === 'active';
   const myTurn = playing && seat !== null && v.turn === seat;
-  const flipped = seat === 1;
+  const flipped = ctx.flip ?? seat === 1;
   if (!myTurn) { st.selected = null; st.promo = null; }
 
   const targets = new Map<string, LegalMove[]>();
@@ -173,6 +179,7 @@ export function renderChess(root: HTMLElement, ctx: ChessCtx): void {
   } else if (m.status === 'challenge') line = 'Challenge not accepted yet.';
   else if (m.status === 'open') line = 'Waiting for someone to open the invite link.';
   else line = `This match was ${m.status}.`;
+  if (ctx.statusOverride) line = ctx.statusOverride;
   const status = h('div', 'px-4 py-2 text-sm font-medium text-white', line);
   status.id = 'statusLine';
   status.setAttribute('role', 'status');
@@ -184,7 +191,9 @@ export function renderChess(root: HTMLElement, ctx: ChessCtx): void {
   // ── actions ──
   if (playing && seat !== null) {
     const acts = h('div', 'px-4 py-2 flex flex-wrap gap-2');
-    if (v.drawOffer !== null && v.drawOffer !== seat) {
+    if (ctx.local) {
+      // one device: no offers
+    } else if (v.drawOffer !== null && v.drawOffer !== seat) {
       acts.append(h('span', 'self-center text-sm text-gray-300', 'Draw offered.'),
         button('Accept draw', BTN_PRIMARY, () => void submit({ t: 'acceptDraw' })),
         button('Decline', BTN_QUIET, () => void submit({ t: 'declineDraw' })));

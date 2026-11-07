@@ -1,6 +1,6 @@
 # octopus-games
 
-A browser arcade — six games — plus a reference wiki with crafting recipes,
+A browser arcade — six games, plus chess and pool (online, pass and play, or against the computer) — plus a reference wiki with crafting recipes,
 per-account goals and remappable controls.
 
 Node + Express, Sequelize over SQLite, single sign-on shared with the rest of
@@ -12,7 +12,8 @@ the estate.
 server/index.js      routes and SSO wiring
 server/database.js   models and migrations
 server/multiplayer/  challenges, invite links, live matches (see MULTIPLAYER.md)
-shared/<type>/       pure game engines loaded by server and client (chess)
+shared/<type>/       pure game engines loaded by server and client (chess, pool)
+shared/bots/         computer opponents (classic search, run in the browser; see MULTIPLAYER.md)
 ```
 
 ## Per-account, not global

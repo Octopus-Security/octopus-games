@@ -380,3 +380,39 @@ test('the gate stays in front of everything that is not a match', async () => {
   const routes = [...svc.matchAll(/guestRouter\.(get|post)\('([^']+)'/g)].map(m => m[2]);
   assert.ok(routes.length >= 9 && routes.every(r => /^\/(m\/:id|i\/:token)(\/|$)/.test(r)), routes.join());
 });
+
+// ── pool through the same host, with a rules variant ─────────────────────────
+test('pool: a variant is validated, stored in the state and shown in the view; 8ball stays the default', async () => {
+  const bad = await call('POST', '/api/play/invites', { user: 'alice', body: { type: 'pool', variant: 'snooker' } });
+  assert.strictEqual(bad.status, 400);
+  assert.strictEqual(bad.json.error, 'BAD_VARIANT');
+  assert.strictEqual((await call('POST', '/api/play/invites', { user: 'alice', body: { type: 'chess', variant: '9ball' } })).status, 400);
+
+  const def = await call('POST', '/api/play/invites', { user: 'alice', body: { type: 'pool', color: 'first' } });
+  assert.strictEqual(def.status, 201);
+  const defTok = def.json.invite.path.split('/').pop();
+  assert.strictEqual((await call('GET', `/play/i/${defTok}/state`)).json.view.variant, '8ball');
+
+  const r = await call('POST', '/api/play/invites', { user: 'alice', body: { type: 'pool', color: 'first', variant: '9ball' } });
+  assert.strictEqual(r.status, 201);
+  const tok = r.json.invite.path.split('/').pop();
+  const claim = await call('POST', `/play/i/${tok}/claim`, { body: { name: 'Potter' } });
+  assert.strictEqual(claim.status, 200);
+  const gc = { cookie: cookieOf(claim) };
+  const st = await call('GET', `/play/m/${r.json.id}/state`, { user: 'alice' });
+  assert.strictEqual(st.json.view.variant, '9ball');
+  assert.strictEqual(st.json.view.lowest, 1);
+  assert.strictEqual(st.json.view.balls.filter(Boolean).length, 10);
+
+  // alice breaks, the guest is refused out of turn, then the guest shoots after the turn passes
+  const v0 = st.json.version;
+  const out = await call('POST', `/play/m/${r.json.id}/moves`, { ...gc, body: { version: v0, move: { angle: 0, power: 0.5 } } });
+  assert.strictEqual(out.status, 422);
+  const brk = await call('POST', `/play/m/${r.json.id}/moves`, { user: 'alice', body: { version: v0, move: { angle: 0, power: 1 } } });
+  assert.strictEqual(brk.status, 200);
+  assert.strictEqual(brk.json.view.shots, 1);
+  assert.ok(brk.json.view.lastShot.frameCount > 5, 'the shot to animate travels in the view');
+  const seen = await call('GET', `/play/m/${r.json.id}/state`, gc);
+  assert.strictEqual(seen.json.view.shots, 1);
+  assert.deepStrictEqual(seen.json.view.lastShot.tracks.length, 16);
+});

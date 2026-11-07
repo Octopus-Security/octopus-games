@@ -340,23 +340,26 @@ function createPlay({ getModels, getEngines, indexFile, now = Date.now, limits =
   async function parseCreate(req, res) {
     await expireStale();
     const engines = await getEngines();
-    const { type, color } = req.body || {};
+    const { type, color, variant } = req.body || {};
     if (typeof type !== 'string' || !engines.has(type)) { res.status(400).json({ error: 'UNKNOWN_TYPE' }); return null; }
     if (color !== undefined && !['white', 'black', 'random', 'first', 'second'].includes(color)) { res.status(400).json({ error: 'BAD_COLOR' }); return null; }
+    // Rules variant (pool: '8ball' | '9ball'). Only what the engine lists is accepted.
+    const engine = engines.get(type);
+    if (variant !== undefined && !(Array.isArray(engine.variants) && engine.variants.includes(variant))) { res.status(400).json({ error: 'BAD_VARIANT' }); return null; }
     if (await openCount(req.user.username, lc(req.user.username)) >= L.openPerUser) {
       res.status(429).json({ error: 'TOO_MANY_MATCHES', message: `You can have at most ${L.openPerUser} open matches.` });
       return null;
     }
     const mine = color === 'white' || color === 'first' ? 0 : color === 'black' || color === 'second' ? 1 : crypto.randomInt(0, 2);
     const seed = crypto.randomBytes(8).toString('hex');
-    return { engine: engines.get(type), type, mine, seed };
+    return { engine, type, mine, seed, variant };
   }
 
   function baseValues(req, c, status) {
     const me = req.user.username;
     return {
       id: crypto.randomUUID(), type: c.type, status, seed: c.seed, version: 0,
-      state: JSON.stringify(c.engine.initialState(c.seed)),
+      state: JSON.stringify(c.engine.initialState(c.seed, c.variant === undefined ? undefined : { variant: c.variant })),
       createdBy: me, expiresAt: new Date(now() + L.inviteDays * 24 * 3600 * 1000),
       [`seat${c.mine}Kind`]: 'user', [`seat${c.mine}Name`]: me, [`seat${c.mine}Key`]: lc(me),
     };

@@ -1,8 +1,12 @@
 # Multiplayer: challenges, invite links and live turn-based games
 
 Two-seat, turn-based games with no clocks. A match is resumable: leave, come
-back, carry on (correspondence style). Chess is the first game type; pool plugs in
-through the same interface (below).
+back, carry on (correspondence style). Chess and pool (8-ball and 9-ball) are the
+two game types; both plug in through the same interface (below).
+
+Every game can also be played **locally**, with no server and no account: pass and
+play (two people, one device) and vs Computer. Those modes are not matches: they use
+the same shared engine in the browser and are described under "Local modes" below.
 
 This repo is public, so this file says how it works, not how to get in.
 
@@ -15,7 +19,12 @@ One ESM file per game type at `shared/<type>/index.js`, default-exporting:
   type: 'chess',          // must equal the directory name: [a-z][a-z0-9-]*
   title: 'Chess',         // optional display name
   seats: 2,               // the server only supports 2 for now
-  initialState(seed)      // -> state.  `seed` is a random 16-hex string, stored with the match
+  variants: ['8ball', '9ball'],  // optional. A create request may carry { variant }; anything
+                          // not in this list is refused with 400 BAD_VARIANT (a type without
+                          // the list refuses every variant). Chosen once, stored in the state.
+  initialState(seed, options?)
+                          // -> state.  `seed` is a random 16-hex string, stored with the match.
+                          //    `options` is { variant } and only exists for types that list `variants`
   applyMove(state, move, seat)
                           // -> { state, events }, or throws an IllegalMove
   view(state, seat)       // seat is 0, 1 or null (spectator) -> what that viewer may see
@@ -56,7 +65,20 @@ One ESM file per game type at `shared/<type>/index.js`, default-exporting:
   copies `shared/` into the image.
 - Client side, a type needs a renderer registered in `client/src/play/PlayPage.ts`
   (`UIS`) with the signature of `renderChess` in `client/src/play/chess.ts`, and a
-  card in `client/src/play/PlayHub.ts`. Pool's card currently says "coming soon".
+  card in `client/src/play/PlayHub.ts`. Chess is `chess.ts`, pool is `pool.ts`. The match
+  page keeps ONE stage element across live updates, so a renderer may keep state on it
+  (pool keeps its canvas there, which is what lets a new shot animate from where the balls
+  were).
+
+Pool specifics (rules in `shared/pool/RULES.md`): a move is a shot `{ angle, power, spinY? }`,
+`{ placeCue: { x, y } }` (ball in hand) or `{ callPocket }` (8-ball only). The create request
+takes `variant: '8ball' | '9ball'` (default `8ball`; a state stored before variants existed has
+no `variant` field and is read as 8-ball). The state's `lastShot` holds the animation
+(per-ball tracks); `view` carries it, so BOTH browsers replay every shot, the shooter's and the
+opponent's, from data the server produced. The server is authoritative: it runs the physics,
+the client only draws and sends the aim. Receiving the same state twice (a live-update refetch
+and the reply to your own move) does not restart or cut short a replay; tapping the table skips
+it.
 
 Chess specifics: FEN is stored on the state and on every history entry, SAN on
 every history entry. Moves are `{ from: 'e2', to: 'e4', promotion?: 'q'|'r'|'b'|'n' }`
@@ -167,3 +189,50 @@ Tokens are never logged: errors log `err.message` only, no request URLs, headers
 or bodies. All `/play` and `/api/play` responses are `Cache-Control: no-store`,
 `Referrer-Policy: no-referrer` and `X-Robots-Tag: noindex`, because the invite
 token is in the URL path.
+
+## Local modes (pass and play, vs Computer)
+
+Picked on each game's card in the hub ("Board games" tab): Online, Pass and play, vs
+Computer. The two local modes:
+
+- run entirely in the browser on the shared engine (`initialState`, `applyMove`, `view`,
+  `status`), so the rules are the same as online;
+- keep **no server state** and need **no account** (the cards work signed out);
+- store only the game in progress in `localStorage` (`octopus_local_<game>_v1`, wrapped in
+  try/catch, one per game), so a reload offers "Resume". A finished game is removed.
+  `octopus_local_prefs_v1` holds the chess "board flips / fixed" setting;
+- **Pass and play** shows a "Player 2's turn" handover card between turns (and when a game is
+  resumed); pool only shows it when the turn really changes hands. Chess flips the board to the
+  player to move unless "Board: fixed" is chosen. There are no draw offers locally (resign works);
+- **vs Computer** has Easy, Medium and Hard.
+
+### The computer opponents never use a paid service
+
+They are classic algorithms in `shared/bots/` (`chess.js`, `pool.js`) running in a Web Worker
+(`client/src/play/botWorker.ts`, hosted by `bots.ts`) in the player's browser. They call no LLM,
+no cortex, no `/api/local`, no `@anthropic-ai/sdk` and no other API, and the server is never
+involved, so a game costs nothing. `test/no-paid-ai.test.js` fails if anything under `shared/`
+or `client/src/play/` imports or fetches one (and, for the bot and engine code, if it touches
+the network at all). A reply is held back to a minimum "thinking" time (0.7 s chess, 0.9 s
+pool) so it never looks instant; the engine has the last word, so a move it refuses is
+replaced by a legal one. `shared/bots/` has no `index.js` on purpose: the server's engine
+loader only registers directories that have one, so the bots are never a game type.
+
+**Chess bot.** Alpha-beta (negamax) with iterative deepening under a time budget, check
+extension, move ordering (previous best, MVV-LVA, promotions, killer moves, history), quiescence
+on captures, and material plus piece-square tables (the king table switches to an endgame table
+when little material is left). Easy: depth 2, noisy root scores and a 30% chance of a random
+legal move. Medium: up to depth 5, ~1.1 s. Hard: up to depth 12, ~2 s (about depth 6 on a
+laptop-class CPU). Not rated against any engine. It has no transposition table, no opening book
+and no repetition awareness, so it can walk into a draw by repetition.
+
+**Pool bot (8-ball and 9-ball).** For every legal target ball and pocket it computes the
+ghost-ball aim and a power estimate, tries a few power and follow/draw variants plus gentle
+"safe" hits, and simulates each with the real deterministic physics and rules
+(`simulateShot` + `resolveShot`). It scores what the engine reports: pocketing a ball it may,
+keeping the turn, a foul (very bad), how easy its next shot is, how easy a shot it leaves the
+opponent. Ball in hand tries placements for straight-in shots; the break tries a few cue
+positions; the 8 is called. The chosen shot gets a level-dependent aim and power error.
+Easy: 8 simulations, large error, random among the best few. Medium: 30, moderate. Hard: 70,
+small error. Each is also capped by wall-clock (0.5 / 1.2 / 1.8 s). Not modelled: bank shots,
+combinations, kicks, side spin (the engine has none).

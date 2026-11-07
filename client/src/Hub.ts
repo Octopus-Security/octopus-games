@@ -8,7 +8,6 @@ import { launchSudoku } from './games/sudoku/index';
 import { launchBlackjack } from './games/blackjack/index';
 import { launchFrogger } from './games/frogger/index';
 import { launchGalaga } from './games/galaga/index';
-import { launchPoolPractice } from './games/pool/index';
 
 const ADMIN_USERNAME = 'psychopathy';
 
@@ -98,15 +97,6 @@ const GAMES: GameDef[] = [
     category: 'Arcade',
     available: true,
     launch: launchGalaga,
-  },
-  {
-    slug: 'pool-practice',
-    title: 'Pool (practice)',
-    description: '8-ball on one device, two players taking turns. Online play against other users is coming.',
-    emoji: '🎱',
-    category: 'Sports',
-    available: true,
-    launch: launchPoolPractice,
   },
 ];
 
@@ -377,7 +367,7 @@ export function renderHub(user: User | null, onRefresh: () => void): HTMLElement
       <span class="font-bold text-blue-400 text-lg">🐙 Octopus Games</span>
       <div class="flex items-center gap-2 flex-wrap">
         <button id="tabServers" class="tab-btn px-4 py-1.5 rounded-full text-sm font-medium transition-colors bg-blue-600 text-white">Servers</button>
-        <button id="tabPlay" class="tab-btn px-4 py-1.5 rounded-full text-sm font-medium transition-colors bg-gray-800 text-gray-400 hover:text-white border border-gray-700">Play with friends</button>
+        <button id="tabPlay" class="tab-btn px-4 py-1.5 rounded-full text-sm font-medium transition-colors bg-gray-800 text-gray-400 hover:text-white border border-gray-700">Board games</button>
         <button id="tabGames" class="tab-btn px-4 py-1.5 rounded-full text-sm font-medium transition-colors bg-gray-800 text-gray-400 hover:text-white border border-gray-700">Arcade</button>
         <button id="tabRef" class="tab-btn px-4 py-1.5 rounded-full text-sm font-medium transition-colors bg-gray-800 text-gray-400 hover:text-white border border-gray-700">Reference</button>
       </div>
@@ -403,7 +393,7 @@ export function renderHub(user: User | null, onRefresh: () => void): HTMLElement
       </div>
       <!-- Reference tab -->
       <div id="refTab" class="hidden"></div>
-      <!-- Play with friends tab -->
+      <!-- Board games tab -->
       <div id="playTab" class="hidden"></div>
       <!-- Arcade tab -->
       <div id="arcadeTab" class="hidden">

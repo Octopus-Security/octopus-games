@@ -7,7 +7,7 @@
 import { initialState, applyMove, view, status, IllegalMove } from './rules.js';
 
 export { initialState, applyMove, view, status, IllegalMove };
-export { rackOrder, targetOf, groupOf, resolveShot, compactTracks } from './rules.js';
+export { rackOrder, rackOrder9, targetOf, groupOf, resolveShot, compactTracks, lowestBall, VARIANTS } from './rules.js';
 export {
   simulateShot, aimGuide, cuePlacementProblem, nearestFreeSpot, normaliseShot,
   W, H, R, D, HEAD_X, FOOT_X, POCKETS, KNUCKLES, V_MAX, MAX_FRAMES,
@@ -17,5 +17,8 @@ export const type = 'pool';
 export const seats = 2;
 export const title = 'Pool';
 
-const plugin = { type, title, seats, initialState, applyMove, view, status, IllegalMove };
+// Chosen at match creation (initialState's second argument); the host validates against this list.
+export const variants = ['8ball', '9ball'];
+
+const plugin = { type, title, seats, variants, initialState, applyMove, view, status, IllegalMove };
 export default plugin;
