@@ -8,6 +8,7 @@ WORKDIR /app
 COPY client/package*.json ./client/
 RUN cd client && npm install
 
+COPY shared/ ./shared/
 COPY client/ ./client/
 RUN cd client && npm run build
 

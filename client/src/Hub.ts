@@ -7,6 +7,7 @@ import { launchSudoku } from './games/sudoku/index';
 import { launchBlackjack } from './games/blackjack/index';
 import { launchFrogger } from './games/frogger/index';
 import { launchGalaga } from './games/galaga/index';
+import { launchPoolPractice } from './games/pool/index';
 
 const ADMIN_USERNAME = 'psychopathy';
 
@@ -96,6 +97,15 @@ const GAMES: GameDef[] = [
     category: 'Arcade',
     available: true,
     launch: launchGalaga,
+  },
+  {
+    slug: 'pool-practice',
+    title: 'Pool (practice)',
+    description: '8-ball on one device, two players taking turns. Online play against other users is coming.',
+    emoji: '🎱',
+    category: 'Sports',
+    available: true,
+    launch: launchPoolPractice,
   },
 ];
 
