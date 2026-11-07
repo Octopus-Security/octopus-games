@@ -11,6 +11,8 @@ the estate.
 ```
 server/index.js      routes and SSO wiring
 server/database.js   models and migrations
+server/multiplayer/  challenges, invite links, live matches (see MULTIPLAYER.md)
+shared/<type>/       pure game engines loaded by server and client (chess)
 ```
 
 ## Per-account, not global
