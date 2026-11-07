@@ -6,7 +6,7 @@ import type { Level } from './bots';
 
 const TITLES: Record<string, string> = { chess: 'Chess', pool: 'Pool' };
 
-const SELECT_CLS = 'min-h-[44px] w-full bg-gray-800 border border-gray-700 rounded-lg px-2 text-base text-white';
+const SELECT_CLS = 'g-field';
 
 interface GameDef { type: 'chess' | 'pool'; emoji: string; title: string; blurb: string; sides: [string, string, string]; hasVariant: boolean }
 const DEFS: GameDef[] = [
@@ -20,35 +20,35 @@ function select(id: string, label: string, options: [string, string][], initial?
   el.id = id;
   for (const [v, t] of options) { const o = h('option', '', t) as HTMLOptionElement; o.value = v; el.append(o); }
   if (initial) el.value = initial;
-  const lab = h('label', 'text-xs uppercase tracking-wide text-gray-500', label) as HTMLLabelElement;
+  const lab = h('label', 'g-label', label) as HTMLLabelElement;
   lab.htmlFor = id;
-  return { wrap: h('div', 'flex flex-col gap-1', lab, el), el };
+  return { wrap: h('div', 'flex flex-col gap-1.5', lab, el), el };
 }
 
 /** The "Play" tab of the hub: Chess and Pool, each in three ways (online, pass and play, vs computer). */
 export function renderPlayHub(user: User | null): HTMLElement {
   const el = h('div', 'flex flex-col gap-8');
   el.append(h('div', '',
-    h('h2', 'text-xl font-bold text-white', 'Board games'),
-    h('p', 'text-sm text-gray-400 mt-1', 'Pick a way to play on each card. Online games can be left and come back to; challenge someone by username or send a link that works without an account. Pass and play and vs Computer run in this browser and need no account.')));
+    h('h2', 'g-page-title', 'Board games'),
+    h('p', 'g-lede', 'Pick a way to play on each card. Online games can be left and come back to; challenge someone by username or send a link that works without an account. Pass and play and vs Computer run in this browser and need no account.')));
 
-  const cards = h('div', 'grid grid-cols-1 sm:grid-cols-2 gap-4 items-start');
+  const cards = h('div', 'g-grid g-grid-2');
   el.append(cards);
   const reloadLists: (() => void)[] = [];
 
   for (const def of DEFS) {
-    const card = h('div', 'bg-gray-900 border border-gray-800 rounded-2xl p-4 flex flex-col gap-3 min-w-0');
+    const card = h('div', 'g-card flex flex-col gap-4');
     card.id = `card-${def.type}`;
-    card.append(h('div', 'flex items-center gap-3', h('span', 'text-3xl', def.emoji), h('div', 'min-w-0', h('div', 'font-semibold text-white', def.title), h('div', 'text-xs text-gray-500', def.blurb))));
+    card.append(h('div', 'flex items-start gap-4', h('span', 'g-icon-tile', def.emoji), h('div', 'min-w-0', h('h3', 'g-card-title', def.title), h('p', 'g-card-desc', def.blurb))));
 
     // mode tabs
     let mode: Mode = user ? 'online' : 'pass';
-    const tabs = h('div', 'grid grid-cols-3 gap-1 bg-gray-950 rounded-xl p-1');
+    const tabs = h('div', 'g-seg');
     tabs.setAttribute('role', 'tablist');
-    const body = h('div', 'flex flex-col gap-3');
+    const body = h('div', 'flex flex-col gap-4');
     const tabBtns = new Map<Mode, HTMLButtonElement>();
     for (const [m, label] of [['online', 'Online'], ['pass', 'Pass and play'], ['cpu', 'vs Computer']] as [Mode, string][]) {
-      const b = h('button', 'min-h-[44px] rounded-lg text-xs sm:text-sm font-medium leading-tight px-1 transition-colors', label) as HTMLButtonElement;
+      const b = h('button', '', label) as HTMLButtonElement;
       b.type = 'button'; b.dataset.mode = m;
       b.setAttribute('role', 'tab');
       b.addEventListener('click', () => { mode = m; paint(); });
@@ -57,7 +57,7 @@ export function renderPlayHub(user: User | null): HTMLElement {
     }
     card.append(tabs, body);
 
-    const msg = h('p', 'text-sm text-amber-300 min-h-[1.25rem]');
+    const msg = h('p', 'text-base text-amber-300 min-h-[1.5rem]');
     msg.id = def.type === 'chess' ? 'playMsg' : 'playMsg-pool';
     const inviteOut = h('div', 'flex flex-col gap-2');
 
@@ -66,7 +66,7 @@ export function renderPlayHub(user: User | null): HTMLElement {
     const sideOnline = select(`side-${def.type}`, def.type === 'chess' ? 'Your colour' : 'Who breaks', [['random', def.sides[0]], ['first', def.sides[1]], ['second', def.sides[2]]]);
     const sideLocal = select(`cpuside-${def.type}`, def.type === 'chess' ? 'You play' : 'Who breaks', [['random', def.sides[0]], ['0', def.sides[1]], ['1', def.sides[2]]]);
     const level = select(`level-${def.type}`, 'Difficulty', [['easy', 'Easy'], ['medium', 'Medium'], ['hard', 'Hard']], 'medium');
-    const input = h('input', 'min-h-[44px] bg-gray-800 border border-gray-700 focus:border-blue-500 rounded-lg px-3 text-base text-white outline-none placeholder:text-gray-600 w-full') as HTMLInputElement;
+    const input = h('input', 'g-field') as HTMLInputElement;
     input.placeholder = 'Their username';
     input.id = def.type === 'chess' ? 'challengeName' : 'challengeName-pool';
     input.autocomplete = 'off';
@@ -74,7 +74,7 @@ export function renderPlayHub(user: User | null): HTMLElement {
 
     const body_online = (): HTMLElement[] => {
       if (!user) {
-        return [h('p', 'text-sm text-gray-400', 'Sign in to challenge people or create a link. If someone sent you a link, just open it.'),
+        return [h('p', 'text-base text-gray-400', 'Sign in to challenge people or create a link. If someone sent you a link, just open it.'),
           button('Sign in', BTN_PRIMARY, () => goToLogin(false))];
       }
       const variantBody = (): Record<string, unknown> => (variant ? { variant: variant.el.value } : {});
@@ -90,15 +90,15 @@ export function renderPlayHub(user: User | null): HTMLElement {
       return [
         ...(variant ? [variant.wrap] : []),
         sideOnline.wrap,
-        h('div', 'flex flex-col gap-2', h('label', 'text-xs uppercase tracking-wide text-gray-500', 'Challenge a user'), input, button('Challenge', BTN_PRIMARY, () => void challenge())),
-        h('label', 'text-xs uppercase tracking-wide text-gray-500 mt-1', 'Or send a link'),
+        h('div', 'flex flex-col gap-2', h('label', 'g-label', 'Challenge a user'), input, button('Challenge', BTN_PRIMARY, () => void challenge())),
+        h('label', 'g-label mt-1', 'Or send a link'),
         button('Create invite link', BTN_QUIET, async b => {
           b.disabled = true;
           const r = await api<{ id: string; invite: { path: string } }>('POST', '/api/play/invites', { type: def.type, color: sideOnline.el.value, ...variantBody() });
           b.disabled = false;
           if (!r.ok || !r.data) { msg.textContent = lobbyMessage(r); return; }
           const url = absoluteUrl(r.data.invite.path);
-          const field = h('input', 'min-h-[44px] bg-gray-800 border border-gray-700 rounded-lg px-3 text-sm text-gray-200 w-full') as HTMLInputElement;
+          const field = h('input', 'g-field') as HTMLInputElement;
           field.readOnly = true; field.value = url; field.setAttribute('aria-label', 'Invite link');
           inviteOut.replaceChildren(field, h('div', 'flex gap-2',
             button('Copy invite link', BTN_PRIMARY, async cb => { cb.textContent = (await copyText(url)) ? 'Link copied' : 'Copy failed'; }),
@@ -114,8 +114,8 @@ export function renderPlayHub(user: User | null): HTMLElement {
       resumeBox.replaceChildren();
       const s = loadSaved(def.type);
       if (!s) return;
-      resumeBox.append(h('div', 'bg-gray-950 border border-gray-800 rounded-xl p-3 flex flex-col gap-2',
-        h('div', 'text-sm text-gray-200', `Unfinished game: ${describeSaved(s)}`),
+      resumeBox.append(h('div', 'rounded-xl p-3 flex flex-col gap-2 border border-gray-700 bg-gray-950',
+        h('div', 'text-base text-gray-200', `Unfinished game: ${describeSaved(s)}`),
         h('div', 'flex gap-2',
           button('Resume', BTN_PRIMARY, () => launchLocal(s.cfg, s)),
           button('Discard', BTN_QUIET, () => { clearSaved(def.type); paintResume(); }))));
@@ -137,13 +137,13 @@ export function renderPlayHub(user: User | null): HTMLElement {
       for (const [m, b] of tabBtns) {
         const on = m === mode;
         b.setAttribute('aria-selected', String(on));
-        b.className = `min-h-[44px] rounded-lg text-xs sm:text-sm font-medium leading-tight px-1 transition-colors ${on ? 'bg-blue-600 text-white' : 'text-gray-400 hover:text-white'}`;
+
       }
       if (mode === 'online') { body.replaceChildren(...body_online()); return; }
       const start = button(mode === 'pass' ? 'Start (pass and play)' : 'Start game', BTN_PRIMARY, () => startLocal(mode as 'pass' | 'cpu'));
       start.id = `start-${def.type}-${mode}`;
       body.replaceChildren(
-        h('p', 'text-xs text-gray-500', mode === 'pass'
+        h('p', 'text-sm text-gray-400', mode === 'pass'
           ? 'Two people, one device, taking turns. Runs in this browser; nothing is saved on a server and no account is needed.'
           : 'Play the computer. It runs in this browser, so it is free for everyone and works without an account.'),
         ...(variant ? [variant.wrap] : []),
@@ -157,7 +157,7 @@ export function renderPlayHub(user: User | null): HTMLElement {
   }
 
   const lists = h('div', 'flex flex-col gap-8');
-  const msg = h('p', 'text-sm text-amber-300 min-h-[1.25rem]');
+  const msg = h('p', 'text-base text-amber-300 min-h-[1.5rem]');
   if (!user) return el;
 
   el.append(lists);
@@ -170,24 +170,24 @@ export function renderPlayHub(user: User | null): HTMLElement {
     const statusText = ({ challenge: 'challenge pending', open: 'invite link open', active: m.yourTurn ? 'your move' : "opponent's move", finished: m.winner === null ? 'draw' : m.winner === m.seat ? 'you won' : 'you lost' } as Record<string, string>)[m.status] || m.status;
     const a = h('a', 'flex-1 min-w-0 min-h-[44px] flex flex-col justify-center') as HTMLAnchorElement;
     a.href = `/play/m/${m.id}`;
-    a.append(h('span', 'text-sm text-white truncate', `${TITLES[m.type] || m.type} ${who}`),
-      h('span', `text-xs ${m.yourTurn ? 'text-green-400' : 'text-gray-500'}`, statusText));
-    return h('div', 'bg-gray-900 border border-gray-800 rounded-xl px-4 py-2 flex flex-wrap items-center gap-2', a, ...extra);
+    a.append(h('span', 'text-base font-semibold text-white truncate', `${TITLES[m.type] || m.type} ${who}`),
+      h('span', `text-sm ${m.yourTurn ? 'text-green-400 font-bold' : 'text-gray-400'}`, m.yourTurn ? `▶ ${statusText}` : statusText));
+    return h('div', 'g-card flex flex-wrap items-center gap-3', a, ...extra);
   };
 
   async function load(): Promise<void> {
     const r = await api<{ incoming: MatchSummary[]; matches: MatchSummary[] }>('GET', '/api/play/matches');
     if (!r.ok || !r.data) return;
-    incomingBox.replaceChildren(h('h3', 'font-semibold text-white', 'Incoming challenges'));
-    if (!r.data.incoming.length) incomingBox.append(h('p', 'text-sm text-gray-600', 'None right now.'));
+    incomingBox.replaceChildren(h('h3', 'text-xl font-bold text-white', 'Incoming challenges'));
+    if (!r.data.incoming.length) incomingBox.append(h('p', 'text-base text-gray-500', 'None right now.'));
     for (const m of r.data.incoming) {
       incomingBox.append(row({ ...m, opponent: m.createdBy }, [
         button('Accept', BTN_PRIMARY, async () => { const a = await api('POST', `/api/play/matches/${m.id}/accept`); if (a.ok) location.href = `/play/m/${m.id}`; else { msg.textContent = lobbyMessage(a); void load(); } }),
         button('Decline', BTN_QUIET, async () => { await api('POST', `/api/play/matches/${m.id}/decline`); void load(); }),
       ]));
     }
-    mineBox.replaceChildren(h('h3', 'font-semibold text-white', 'Your matches'));
-    if (!r.data.matches.length) mineBox.append(h('p', 'text-sm text-gray-600', 'No matches yet. Challenge someone or create a link.'));
+    mineBox.replaceChildren(h('h3', 'text-xl font-bold text-white', 'Your matches'));
+    if (!r.data.matches.length) mineBox.append(h('p', 'text-base text-gray-500', 'No matches yet. Challenge someone or create a link.'));
     for (const m of r.data.matches) {
       const extra: HTMLElement[] = [];
       if (m.invite) extra.push(button('Copy invite link', BTN_QUIET, async b => { b.textContent = (await copyText(absoluteUrl(m.invite!.path))) ? 'Link copied' : 'Copy failed'; }));

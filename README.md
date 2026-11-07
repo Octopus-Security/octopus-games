@@ -16,6 +16,16 @@ shared/<type>/       pure game engines loaded by server and client (chess, pool)
 shared/bots/         computer opponents (classic search, run in the browser; see MULTIPLAYER.md)
 ```
 
+## Client UI
+
+`client/src/style.css` takes its tokens from octopus-kit (`--o-*`, and the Games accent under
+`data-app="games"`, set on `<html>` with `data-theme="dark"`: the arcade is dark-only). The kit
+is pinned by tag the same way other apps do it, as a codeload tarball in `client/package.json`.
+The layout and text rules from the kit's `docs/layout.md` are mirrored in that file until a tagged
+kit carries them. Board games share one screen, `client/src/play/gameScreen.ts`: turn banner,
+a panel per player, the board, a toolbar. Chess and pool both draw into it, whether online,
+pass and play or against the computer.
+
 ## Per-account, not global
 
 Goals, control bindings and progress belong to an account: rows carry a

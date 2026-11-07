@@ -3,36 +3,41 @@ import { api, type MatchState } from './api';
 import { h, button, copyText, absoluteUrl, BTN_PRIMARY, BTN_QUIET, BTN_DANGER } from './dom';
 import { renderChess } from './chess';
 import { renderPool } from './pool';
+import { createGameScreen, type GameScreen } from './gameScreen';
 
 export type PlayRoute = { kind: 'm'; id: string } | { kind: 'i'; token: string };
 
-const UIS: Record<string, (root: HTMLElement, ctx: { match: MatchState; send: (m: Record<string, unknown>) => Promise<string | null> }) => void> = {
+const UIS: Record<string, (screen: GameScreen, ctx: { match: MatchState; send: (m: Record<string, unknown>) => Promise<string | null> }) => void> = {
   chess: renderChess,
   pool: renderPool,
 };
 const TITLES: Record<string, string> = { chess: 'Chess', pool: 'Pool' };
+const ICONS: Record<string, string> = { chess: '♞', pool: '🎱' };
 const rememberKey = (token: string): string => `octopus_play_inv_${token}`;
 
-function shell(): { el: HTMLElement; body: HTMLElement } {
-  const el = h('div', 'min-h-screen bg-gray-950 text-white');
-  const nav = h('nav', 'bg-gray-900 border-b border-gray-800 px-4 py-2 flex items-center justify-between gap-3',
-    h('span', 'font-bold text-blue-400', '🐙 Octopus Games'));
-  const home = h('a', 'min-h-[44px] flex items-center text-sm text-gray-400 hover:text-white', 'All games') as HTMLAnchorElement;
+function brandHeader(): HTMLElement {
+  const home = h('a', 'g-brand', h('span', 'g-logo', '🐙'), h('span', 'g-brand-name', 'Octopus Games')) as HTMLAnchorElement;
   home.href = '/';
-  nav.append(home);
-  const body = h('main', 'w-full max-w-[560px] mx-auto');
-  el.append(nav, body);
-  return { el, body };
+  const all = h('a', 'g-btn g-btn-ghost', '← All games') as HTMLAnchorElement;
+  all.href = '/';
+  all.style.marginLeft = 'auto';
+  return h('header', 'g-header', h('div', 'g-header-in', home, all));
 }
 
-function notice(body: HTMLElement, title: string, text: string): void {
-  body.replaceChildren(h('div', 'px-4 py-10 text-center', h('h1', 'text-xl font-bold mb-2', title), h('p', 'text-gray-400 text-sm', text)));
+/** A plain page (invite, notices): the app header and a centred column. */
+function page(el: HTMLElement, ...kids: (Node | null)[]): void {
+  el.replaceChildren(brandHeader(), h('main', 'g-center', ...kids));
+}
+
+function notice(el: HTMLElement, title: string, text: string): void {
+  page(el, h('div', 'text-center', h('h1', 'text-2xl font-extrabold mb-2', title), h('p', 'text-gray-400 text-base', text)));
 }
 
 export function renderPlay(route: PlayRoute, user: User | null): HTMLElement {
-  const { el, body } = shell();
-  if (route.kind === 'i') void inviteFlow(body, route.token, user);
-  else void matchFlow(body, `/play/m/${route.id}`, route.id);
+  const el = h('div', 'min-h-screen');
+  page(el, h('p', 'text-center text-gray-500', 'Loading…'));
+  if (route.kind === 'i') void inviteFlow(el, route.token, user);
+  else void matchFlow(el, `/play/m/${route.id}`, route.id);
   return el;
 }
 
@@ -61,10 +66,10 @@ async function inviteFlow(body: HTMLElement, token: string, user: User | null): 
     return;
   }
 
-  const card = h('div', 'px-4 py-8 flex flex-col gap-4');
-  card.append(h('h1', 'text-2xl font-bold', `${d.title || TITLES[d.type] || d.type} with ${d.host}`),
-    h('p', 'text-sm text-gray-400', `${d.host} has invited you to a game. No account needed.`));
-  const err = h('p', 'text-sm text-amber-300 min-h-[1.25rem]');
+  const card = h('div', 'g-card flex flex-col gap-4');
+  card.append(h('span', 'g-icon-tile', ICONS[d.type] || '🎮'), h('h1', 'text-2xl font-extrabold', `${d.title || TITLES[d.type] || d.type} with ${d.host}`),
+    h('p', 'text-base text-gray-400', `${d.host} has invited you to a game. No account needed.`));
+  const err = h('p', 'text-base text-amber-300 min-h-[1.5rem]');
   const claim = async (name?: string): Promise<void> => {
     const r = await api<{ matchId?: string; role: string }>('POST', `/play/i/${token}/claim`, name ? { name } : {});
     if (r.status === 400) { err.textContent = r.error === 'NAME_TAKEN' ? 'That name is taken in this game.' : 'Use 1-24 letters, numbers, spaces, dots, dashes or underscores.'; return; }
@@ -79,7 +84,7 @@ async function inviteFlow(body: HTMLElement, token: string, user: User | null): 
   if (user) {
     card.append(button(`Join as ${user.username}`, BTN_PRIMARY, b => { b.disabled = true; void claim(); }));
   } else {
-    const input = h('input', 'min-h-[44px] w-full bg-gray-800 border border-gray-700 focus:border-blue-500 rounded-lg px-3 text-base text-white outline-none placeholder:text-gray-600') as HTMLInputElement;
+    const input = h('input', 'g-field') as HTMLInputElement;
     input.placeholder = 'Your name (1-24 characters)';
     input.maxLength = 24;
     input.setAttribute('autocomplete', 'nickname');
@@ -87,37 +92,34 @@ async function inviteFlow(body: HTMLElement, token: string, user: User | null): 
     const go = (): void => { void claim(input.value); };
     input.addEventListener('keydown', e => { if (e.key === 'Enter') go(); });
     card.append(input, button('Play as a guest', BTN_PRIMARY, go),
-      h('p', 'text-xs text-gray-500', 'Or'), button('Sign in or create an account', BTN_QUIET, () => goToLogin(false)));
+      h('p', 'text-sm text-gray-500', 'Or'), button('Sign in or create an account', BTN_QUIET, () => goToLogin(false)));
   }
   card.append(err);
-  body.replaceChildren(card);
+  page(body, card);
 }
 
 // ── a match ───────────────────────────────────────────────────────────────────
-async function matchFlow(body: HTMLElement, base: string, matchId: string | null): Promise<void> {
+async function matchFlow(host: HTMLElement, base: string, matchId: string | null): Promise<void> {
   let current: MatchState | null = null;
   let es: EventSource | null = null;
   let pollTimer: number | undefined;
   let fetching = false;
-  const root = h('div', '');
-  body.replaceChildren(root);
-  // The stage persists across redraws so a game page can keep state (the pool board
-  // keeps its canvas, so a new shot can animate from the previous position).
-  const top = h('div', '');
-  const stage = h('div', '');
-  root.append(top, stage);
+  // One screen per page, made when the first state says which game this is. It persists
+  // across redraws so a game page can keep state (the pool board keeps its canvas, so a
+  // new shot can animate from the previous position).
+  let screen: GameScreen | null = null;
 
   async function refresh(): Promise<void> {
     if (fetching) return;
     fetching = true;
     try {
       const r = await api<MatchState>('GET', `${base}/state`);
-      if (r.status === 404) { stop(); notice(body, 'Match not found', 'This match does not exist, or the link was cancelled.'); return; }
+      if (r.status === 404) { stop(); notice(host, 'Match not found', 'This match does not exist, or the link was cancelled.'); return; }
       if (r.ok && r.data && (!current || r.data.version !== current.version || r.data.status !== current.status)) {
         current = r.data;
         draw();
       } else if (!current) {
-        stage.replaceChildren(h('p', 'px-4 py-10 text-center text-gray-500', 'Could not load the match. Retrying…'));
+        notice(host, 'Could not load the match', 'Retrying…');
       }
     } finally { fetching = false; }
   }
@@ -135,31 +137,36 @@ async function matchFlow(body: HTMLElement, base: string, matchId: string | null
 
   function draw(): void {
     const m = current!;
-    document.title = `${TITLES[m.type] || m.type} · Octopus Games`;
     const ui = UIS[m.type];
-    top.replaceChildren();
+    document.title = `${TITLES[m.type] || m.type} · Octopus Games`;
+    if (!ui) { notice(host, 'Not available', 'This game type is not available here yet.'); return; }
+    if (!screen) {
+      const back = h('a', 'g-btn g-btn-ghost', h('span', '', '←'), h('span', '', 'All games')) as HTMLAnchorElement;
+      back.href = '/';
+      screen = createGameScreen({ kind: m.type === 'chess' ? 'chess' : 'pool', title: `${ICONS[m.type] || ''} ${TITLES[m.type] || m.type}`, badge: 'Online', back });
+      host.replaceChildren(screen.el);
+    }
+    const sc = screen;
+    sc.setTitle(`${ICONS[m.type] || ''} ${TITLES[m.type] || m.type}`, m.you.role === 'spectator' ? 'Online · watching' : 'Online');
+    const bar: HTMLElement[] = [];
     // Challenge actions for the invited player
     if (m.status === 'challenge' && m.you.seat !== null && !m.you.creator) {
-      top.append(h('div', 'px-4 py-3 flex flex-wrap items-center gap-2 bg-gray-900 border-b border-gray-800',
-        h('span', 'text-sm text-gray-200 w-full', `${m.createdBy} challenged you to ${TITLES[m.type] || m.type}.`),
+      bar.push(h('span', 'g-notice-text', `${m.createdBy} challenged you to ${TITLES[m.type] || m.type}.`),
         button('Accept', BTN_PRIMARY, async () => { await api('POST', `/api/play/matches/${m.id}/accept`); current = null; await refresh(); }),
-        button('Decline', BTN_DANGER, async () => { await api('POST', `/api/play/matches/${m.id}/decline`); location.href = '/'; })));
+        button('Decline', BTN_DANGER, async () => { await api('POST', `/api/play/matches/${m.id}/decline`); location.href = '/'; }));
     }
     // Invite link controls for the creator
     if (m.invite && m.you.creator && (m.status === 'open' || m.status === 'active')) {
-      const row = h('div', 'px-4 py-3 flex flex-wrap items-center gap-2 bg-gray-900 border-b border-gray-800');
-      if (m.status === 'open') row.append(h('span', 'text-sm text-gray-300 w-full', 'Send this link to anyone, no account needed:'));
+      if (m.status === 'open') bar.push(h('span', 'g-notice-text', 'Send this link to anyone, no account needed:'));
       const copy = button('Copy invite link', BTN_PRIMARY, async b => { b.textContent = (await copyText(absoluteUrl(m.invite!.path))) ? 'Link copied' : 'Copy failed'; });
       copy.id = 'copyInvite';
-      row.append(copy, button('Cancel link', BTN_QUIET, async () => {
+      bar.push(copy, button('Cancel link', BTN_QUIET, async () => {
         await api('POST', `/api/play/matches/${m.id}/revoke-invite`);
         current = null; await refresh();
       }));
-      top.append(row);
     }
-    if (m.you.role === 'spectator') top.append(h('div', 'px-4 py-2 text-xs text-gray-400 bg-gray-900', 'You are watching this game.'));
-    if (ui) ui(stage, { match: m, send });
-    else stage.replaceChildren(h('p', 'px-4 py-10 text-gray-400', 'This game type is not available here yet.'));
+    sc.notice.replaceChildren(...bar);
+    ui(sc, { match: m, send });
   }
 
   function stop(): void {
@@ -174,7 +181,7 @@ async function matchFlow(body: HTMLElement, base: string, matchId: string | null
   // safety net in case an intermediary buffers the stream.
   const startPolling = (ms: number): void => {
     window.clearInterval(pollTimer);
-    pollTimer = window.setInterval(() => { if (!root.isConnected) { stop(); return; } if (!document.hidden) void refresh(); }, ms);
+    pollTimer = window.setInterval(() => { if (!host.isConnected) { stop(); return; } if (!document.hidden) void refresh(); }, ms);
   };
   if (typeof EventSource !== 'undefined') {
     try {

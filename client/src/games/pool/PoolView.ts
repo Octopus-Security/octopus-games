@@ -480,7 +480,7 @@ function roundRect(c: CanvasRenderingContext2D, x: number, y: number, w: number,
 
 // ---------------------------------------------------------------- status text
 
-const REASONS: Record<string, string> = {
+export const REASONS: Record<string, string> = {
   'nine-pocketed': 'sank the 9',
   'eight-pocketed': 'sank the 8',
   'eight-early': 'the 8 went down too early',
@@ -489,7 +489,7 @@ const REASONS: Record<string, string> = {
   'eight-off-table': 'the 8 left the table',
   'eight-foul': 'fouled while sinking the 8',
 };
-const FOULS: Record<string, string> = {
+export const FOULS: Record<string, string> = {
   scratch: 'scratch',
   'no-contact': 'no ball hit',
   'wrong-ball': 'wrong ball first',

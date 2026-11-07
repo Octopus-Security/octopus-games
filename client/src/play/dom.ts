@@ -13,15 +13,15 @@ export function h(tag: string, cls = '', ...kids: Child[]): HTMLElement {
 }
 
 export function button(label: string, cls: string, onClick: (b: HTMLButtonElement) => void): HTMLButtonElement {
-  const b = h('button', `min-h-[44px] px-4 rounded-lg text-sm font-medium transition-colors ${cls}`, label) as HTMLButtonElement;
+  const b = h('button', `g-btn ${cls}`, label) as HTMLButtonElement;
   b.type = 'button';
   b.addEventListener('click', () => onClick(b));
   return b;
 }
 
-export const BTN_PRIMARY = 'bg-blue-600 hover:bg-blue-500 text-white';
-export const BTN_QUIET = 'bg-gray-800 hover:bg-gray-700 text-gray-200 border border-gray-700';
-export const BTN_DANGER = 'bg-red-900/60 hover:bg-red-800 text-red-100 border border-red-800';
+export const BTN_PRIMARY = 'g-btn-primary';
+export const BTN_QUIET = '';
+export const BTN_DANGER = 'g-btn-danger';
 
 export async function copyText(text: string): Promise<boolean> {
   try {
