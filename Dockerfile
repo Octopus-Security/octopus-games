@@ -27,6 +27,8 @@ RUN if [ -n "$NPM_TOKEN" ]; then \
     rm -f .npmrc
 
 COPY server/ ./server/
+# Game-type plugins (ESM, pure). The server loads them with import().
+COPY shared/ ./shared/
 
 # Strip npm from the runtime image. Nothing here runs it — the CMD is a bare
 # `node` — but Trivy reports what is PRESENT, not what is reachable, and npm

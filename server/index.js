@@ -2,7 +2,9 @@ const express = require('express');
 const { createSSOMiddleware } = require('@octopus-security/auth-client');
 const axios = require('axios');
 const path = require('path');
-const { initDb, Setting } = require('./database');
+const { initDb, Setting, multiplayer } = require('./database');
+const { createPlay } = require('./multiplayer/service');
+const { loadEngines } = require('./multiplayer/engines');
 const { BUILD, STARTED_AT } = require('./build');
 const { createAppGate } = require('./appAccess');
 const gamesRouter = require('./routes/games');
@@ -63,6 +65,21 @@ const ssoSession = createSSOMiddleware({
   onUser:     (user, token) => ({ username: user.username, role: user.role, token }),
 });
 
+// ── Multiplayer: guest-reachable routes (MULTIPLAYER.md) ─────────────────────
+// Mounted BEFORE the signed-in-only app gate below, on purpose: a person with an
+// invite link and no account must be able to play that one match. This deliberately
+// lets guests past the app gate for /play/m/:id/* and /play/i/:token/* ONLY; each
+// route authorises against the one match (seat holder, or holder of that link) and
+// answers 404 otherwise. ssoSession runs here too so a signed-in player is
+// recognised as themselves; it never rejects.
+const enginesPromise = loadEngines();
+const play = createPlay({
+  getModels: () => multiplayer,
+  getEngines: () => enginesPromise,
+  indexFile: path.join(__dirname, '../client/dist/index.html'),
+});
+app.use('/play', ssoSession, play.guestRouter);
+
 app.use(ssoSession);
 
 // ── App access gate ───────────────────────────────────────────────────────────
@@ -112,6 +129,9 @@ app.get('/api/me', (req, res) => {
 
 // Game save API
 app.use('/api/games', requireLogin, gamesRouter);
+
+// Multiplayer, signed-in side: challenges, invite links, my matches. Behind the gate.
+app.use('/api/play', requireLogin, play.apiRouter);
 
 // Wiki / reference (public search + pokédex + ror2-chars; controls require login per-route)
 app.use('/api/wiki', wikiRouter);

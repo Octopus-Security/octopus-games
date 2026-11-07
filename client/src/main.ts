@@ -2,6 +2,7 @@ import './style.css';
 import { getUser } from './auth';
 import { renderHub } from './Hub';
 import { renderServerShare } from './ServerShare';
+import { renderPlay } from './play/PlayPage';
 
 const app = document.getElementById('app')!;
 
@@ -13,6 +14,17 @@ async function boot(): Promise<void> {
   if (shareMatch) {
     app.innerHTML = '';
     app.appendChild(renderServerShare(shareMatch[1]));
+    return;
+  }
+
+  // Multiplayer match page (/play/m/:id) and invite link (/play/i/:token). Both work
+  // without an account; the page itself works out who you are.
+  const playMatch = location.pathname.match(/^\/play\/m\/([0-9a-f-]{36})\/?$/);
+  const playInvite = location.pathname.match(/^\/play\/i\/([A-Za-z0-9_-]{32})\/?$/);
+  if (playMatch || playInvite) {
+    const who = await getUser().catch(() => null);
+    app.innerHTML = '';
+    app.appendChild(renderPlay(playMatch ? { kind: 'm', id: playMatch[1] } : { kind: 'i', token: playInvite![1] }, who));
     return;
   }
 

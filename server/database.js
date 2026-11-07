@@ -1,5 +1,6 @@
 const { Sequelize, DataTypes } = require('sequelize');
 const path = require('path');
+const { defineMatchModels } = require('./multiplayer/models');
 
 const sequelize = new Sequelize({
   dialect: 'sqlite',
@@ -58,9 +59,17 @@ const CraftingGoal = sequelize.define('CraftingGoal', {
   checked:  { type: DataTypes.TEXT, allowNull: false, defaultValue: '[]' },   // JSON [materialName,...]
 }, { tableName: 'CraftingGoals', timestamps: true });
 
+// Multiplayer tables are defined AFTER the alter-sync above and created with a
+// plain additive sync() (CREATE TABLE IF NOT EXISTS) — never altered, never forced.
+// Filled in by initDb(); routes read it lazily.
+const multiplayer = {};
+
 async function initDb() {
   await sequelize.authenticate();
   await sequelize.sync({ alter: true });
+  Object.assign(multiplayer, defineMatchModels(sequelize));
+  await multiplayer.Match.sync();
+  await multiplayer.MatchMove.sync();
 }
 
-module.exports = { sequelize, GameSave, GameScore, Setting, GameControls, CraftingRecipe, CraftingGoal, initDb };
+module.exports = { sequelize, GameSave, GameScore, Setting, GameControls, CraftingRecipe, CraftingGoal, multiplayer, initDb };
