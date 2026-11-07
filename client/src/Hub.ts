@@ -1,5 +1,6 @@
 import { logout, goToLogin, type User } from './auth';
 import { renderReference } from './Reference';
+import { renderPlayHub } from './play/PlayHub';
 import { openShareModal, type ShareMod } from './serverShareCard';
 import { launchOctopusPunch } from './games/octopus-punch/index';
 import { launchMinesweeper } from './games/minesweeper/index';
@@ -374,8 +375,9 @@ export function renderHub(user: User | null, onRefresh: () => void): HTMLElement
   el.innerHTML = `
     <nav class="bg-gray-900 border-b border-gray-800 px-6 py-3 flex items-center justify-between gap-4 flex-wrap">
       <span class="font-bold text-blue-400 text-lg">🐙 Octopus Games</span>
-      <div class="flex items-center gap-2">
+      <div class="flex items-center gap-2 flex-wrap">
         <button id="tabServers" class="tab-btn px-4 py-1.5 rounded-full text-sm font-medium transition-colors bg-blue-600 text-white">Servers</button>
+        <button id="tabPlay" class="tab-btn px-4 py-1.5 rounded-full text-sm font-medium transition-colors bg-gray-800 text-gray-400 hover:text-white border border-gray-700">Play with friends</button>
         <button id="tabGames" class="tab-btn px-4 py-1.5 rounded-full text-sm font-medium transition-colors bg-gray-800 text-gray-400 hover:text-white border border-gray-700">Arcade</button>
         <button id="tabRef" class="tab-btn px-4 py-1.5 rounded-full text-sm font-medium transition-colors bg-gray-800 text-gray-400 hover:text-white border border-gray-700">Reference</button>
       </div>
@@ -401,6 +403,8 @@ export function renderHub(user: User | null, onRefresh: () => void): HTMLElement
       </div>
       <!-- Reference tab -->
       <div id="refTab" class="hidden"></div>
+      <!-- Play with friends tab -->
+      <div id="playTab" class="hidden"></div>
       <!-- Arcade tab -->
       <div id="arcadeTab" class="hidden">
         <div class="flex items-center gap-2 mb-6 flex-wrap">
@@ -421,22 +425,31 @@ export function renderHub(user: User | null, onRefresh: () => void): HTMLElement
   const serversTab = el.querySelector('#serversTab') as HTMLElement;
   const arcadeTab  = el.querySelector('#arcadeTab')  as HTMLElement;
   const refTab     = el.querySelector('#refTab')     as HTMLElement;
+  const playTab    = el.querySelector('#playTab')    as HTMLElement;
+  const tabPlayBtn = el.querySelector('#tabPlay')    as HTMLButtonElement;
   const tabServersBtn = el.querySelector('#tabServers') as HTMLButtonElement;
   const tabGamesBtn   = el.querySelector('#tabGames')   as HTMLButtonElement;
   const tabRefBtn     = el.querySelector('#tabRef')     as HTMLButtonElement;
 
-  type Tab = 'servers' | 'games' | 'ref';
+  type Tab = 'servers' | 'games' | 'ref' | 'play';
   let refRendered = false;
+  let playRendered = false;
 
   function switchTab(tab: Tab) {
     serversTab.classList.toggle('hidden', tab !== 'servers');
     arcadeTab.classList.toggle('hidden',  tab !== 'games');
     refTab.classList.toggle('hidden',     tab !== 'ref');
+    playTab.classList.toggle('hidden',    tab !== 'play');
     const active = 'bg-blue-600 text-white';
     const inactive = 'bg-gray-800 text-gray-400 hover:text-white border border-gray-700';
     tabServersBtn.className = `tab-btn px-4 py-1.5 rounded-full text-sm font-medium transition-colors ${tab === 'servers' ? active : inactive}`;
     tabGamesBtn.className   = `tab-btn px-4 py-1.5 rounded-full text-sm font-medium transition-colors ${tab === 'games'   ? active : inactive}`;
     tabRefBtn.className     = `tab-btn px-4 py-1.5 rounded-full text-sm font-medium transition-colors ${tab === 'ref'     ? active : inactive}`;
+    tabPlayBtn.className    = `tab-btn px-4 py-1.5 rounded-full text-sm font-medium transition-colors ${tab === 'play'    ? active : inactive}`;
+    if (tab === 'play' && !playRendered) {
+      playTab.appendChild(renderPlayHub(user));
+      playRendered = true;
+    }
     if (tab === 'ref' && !refRendered) {
       refTab.appendChild(renderReference(user, isAdmin));
       refRendered = true;
@@ -446,6 +459,7 @@ export function renderHub(user: User | null, onRefresh: () => void): HTMLElement
   tabServersBtn.addEventListener('click', () => switchTab('servers'));
   tabGamesBtn.addEventListener('click',   () => switchTab('games'));
   tabRefBtn.addEventListener('click',     () => switchTab('ref'));
+  tabPlayBtn.addEventListener('click',    () => switchTab('play'));
 
   // Auth
   el.querySelector('#logoutBtn')?.addEventListener('click', async () => {
