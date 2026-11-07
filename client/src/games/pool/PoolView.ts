@@ -90,6 +90,9 @@ export class PoolBoard {
   /** Give the board a new state. A shot newer than the last seen one is played back. */
   setView(v: PoolViewState, animate = true): void {
     const isNewShot = this.seenShots >= 0 && v.shots > this.seenShots && !!v.lastShot && animate;
+    // The same state arriving twice (a live-update refetch and the reply to our own move)
+    // must not cut a replay short.
+    const repeat = this.seenShots >= 0 && v.shots === this.seenShots;
     this.view = v;
     this.seenShots = v.shots;
     this.mode = 'idle';
@@ -97,9 +100,14 @@ export class PoolBoard {
     this.aimPower = 0;
     if (isNewShot && v.lastShot && v.lastShot.frameCount > 1) {
       this.anim = { tracks: v.lastShot.tracks, count: v.lastShot.frameCount, dt: v.lastShot.frameDt, start: performance.now() };
-    } else {
+    } else if (!repeat) {
       this.anim = null;
     }
+  }
+
+  /** Who this device plays can change on a live board (a match that starts, a seat taken). */
+  setLocalSeat(seat: number | null): void {
+    this.opts.localSeat = seat;
   }
 
   isAnimating(): boolean {
@@ -473,6 +481,7 @@ function roundRect(c: CanvasRenderingContext2D, x: number, y: number, w: number,
 // ---------------------------------------------------------------- status text
 
 const REASONS: Record<string, string> = {
+  'nine-pocketed': 'sank the 9',
   'eight-pocketed': 'sank the 8',
   'eight-early': 'the 8 went down too early',
   'eight-wrong-pocket': 'the 8 went in the wrong pocket',
@@ -500,7 +509,8 @@ export function statusText(v: PoolViewState, names: [string, string], localSeat:
     ? `Foul (${v.lastShot.fouls.map((f) => FOULS[f] ?? f).join(', ')}). ` : '';
   const who = localSeat !== null && t !== localSeat ? `${names[t]} to shoot` : `${nm(t)}${nm(t) === 'You' ? ' to shoot' : ', your shot'}`;
   const tgt = v.targets[t];
-  const group = tgt === 'open' ? 'open table' : tgt === 'eight' ? 'shoot the 8' : `${tgt}s`;
+  const group = v.variant === '9ball' ? `lowest ball: the ${v.lowest}`
+    : tgt === 'open' ? 'open table' : tgt === 'eight' ? 'shoot the 8' : `${tgt}s`;
   let hint = 'Drag back from anywhere to aim, release to shoot.';
   if (v.mustCall) hint = 'Tap a pocket to call it for the 8.';
   else if (v.inHand) hint = 'Ball in hand: drag the cue ball to move it, or aim as usual.';

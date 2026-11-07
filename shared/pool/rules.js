@@ -88,15 +88,55 @@ export function rackOrder(seed) {
   return slots;
 }
 
-export function initialState(seed) {
-  const slots = rackOrder(seed === undefined ? 0 : seed);
-  const pos = rackPositions();
+export const VARIANTS = ['8ball', '9ball'];
+const variantOf = (state) => (state && state.variant === '9ball' ? '9ball' : '8ball');
+
+// 9-ball diamond: rows of 1, 2, 3, 2, 1 balls along the table. The 1 is the apex,
+// the 9 is the middle of the widest row, the other seven are seeded.
+function diamondPositions() {
+  const out = [];
+  const dx = Math.sqrt(3) * R + 0.01;
+  const dy = 2 * R + 0.02;
+  const counts = [1, 2, 3, 2, 1];
+  for (let r = 0; r < counts.length; r++) {
+    const n = counts[r];
+    for (let c = 0; c < n; c++) out.push([q3(FOOT_X + r * dx), q3(H / 2 + (c - (n - 1) / 2) * dy)]);
+  }
+  return out;
+}
+
+/** Slot -> ball number for the diamond: slot 0 the 1, slot 4 the 9. */
+export function rackOrder9(seed) {
+  const rnd = mulberry32(hashSeed(seed));
+  const rest = shuffle([2, 3, 4, 5, 6, 7, 8], rnd);
+  const slots = new Array(9).fill(0);
+  slots[0] = 1;
+  slots[4] = 9;
+  for (let s = 0; s < 9; s++) if (slots[s] === 0) slots[s] = rest.pop();
+  return slots;
+}
+
+/** options: { variant: '8ball' | '9ball' } (default '8ball'). */
+export function initialState(seed, options) {
+  const wanted = options && options.variant;
+  if (wanted !== undefined && VARIANTS.indexOf(wanted) < 0) throw new TypeError('unknown pool variant');
+  const variant = wanted === '9ball' ? '9ball' : '8ball';
   const balls = new Array(16).fill(null);
   balls[0] = [q3(HEAD_X), q3(H / 2)];
-  for (let s = 0; s < 15; s++) balls[slots[s]] = pos[s];
+  const sd = seed === undefined ? 0 : seed;
+  if (variant === '9ball') {
+    const slots = rackOrder9(sd);
+    const pos = diamondPositions();
+    for (let s = 0; s < 9; s++) balls[slots[s]] = pos[s];
+  } else {
+    const slots = rackOrder(sd);
+    const pos = rackPositions();
+    for (let s = 0; s < 15; s++) balls[slots[s]] = pos[s];
+  }
   return {
     type: 'pool',
     v: 1,
+    variant,
     seed: typeof seed === 'number' ? seed : String(seed === undefined ? 0 : seed),
     balls,
     turn: 0,
@@ -114,13 +154,20 @@ export function initialState(seed) {
 
 // ---------------------------------------------------------------- queries
 
-/** 'open' | 'solid' | 'stripe' | 'eight' | null (game over) */
+/** 'open' | 'solid' | 'stripe' | 'eight' | 'lowest' (9-ball) | null (game over) */
 export function targetOf(state, seat) {
   if (state.over) return null;
+  if (variantOf(state) === '9ball') return 'lowest';
   const g = state.groups[seat];
   if (g === null) return 'open';
   const left = GROUP_IDS[g].some((id) => state.balls[id]);
   return left ? g : 'eight';
+}
+
+/** The lowest-numbered ball still on the table (9-ball), or null. */
+export function lowestBall(balls) {
+  for (let id = 1; id <= 9; id++) if (balls[id]) return id;
+  return null;
 }
 
 export function status(state) {
@@ -137,6 +184,8 @@ export function view(state, seat) {
   const turnTarget = targetOf(state, state.turn);
   return {
     type: 'pool',
+    variant: variantOf(state),
+    lowest: variantOf(state) === '9ball' ? lowestBall(state.balls) : null,
     you: seat === undefined ? null : seat,
     turn: s.over ? null : s.turn,
     over: s.over,
@@ -235,6 +284,7 @@ export function compactTracks(frames) {
  * results (for example a ball off the table, which the physics all but prevents).
  */
 export function resolveShot(state, seat, shot, sim) {
+  if (variantOf(state) === '9ball') return resolveShot9(state, seat, shot, sim);
   const opp = 1 - seat;
   const sum = sim.summary;
   const next = clone(state);
@@ -329,6 +379,83 @@ export function resolveShot(state, seat, shot, sim) {
     next.inHand = null;
     next.turn = seat;
     events.push({ type: 'gameOver', winner, reason });
+  } else {
+    next.turn = again ? seat : opp;
+    next.inHand = fouled ? { kitchen: false } : null;
+    events.push({ type: 'turn', seat: next.turn, inHand: !!next.inHand });
+  }
+  next.lastShot = {
+    seat,
+    shot,
+    ...compactTracks(sim.frames),
+    frameDt: sim.frameDt,
+    events: clone(sim.events),
+    firstContact: sum.firstContact,
+    pocketed: pocketedIds,
+    fouls,
+    respotted,
+  };
+  return { state: next, events };
+}
+
+/**
+ * 9-ball. The lowest numbered ball on the table must be hit first; any ball
+ * pocketed on a legal shot keeps the turn; the 9 pocketed on a legal shot wins
+ * (a combination or the break included); a 9 pocketed on a foul is spotted;
+ * after any foul the opponent has the cue ball in hand anywhere.
+ */
+function resolveShot9(state, seat, shot, sim) {
+  const opp = 1 - seat;
+  const sum = sim.summary;
+  const next = clone(state);
+  next.balls = clone(sim.finalState.balls);
+  const balls = next.balls;
+  const events = [{ type: 'shot', seat, shot }].concat(clone(sim.events));
+  const lowest = lowestBall(state.balls);
+
+  const fouls = [];
+  const foul = (reason) => { if (fouls.indexOf(reason) < 0) fouls.push(reason); };
+  const pocketedIds = sum.pocketed.map((p) => p.ball);
+  const objectsDown = pocketedIds.filter((id) => id !== 0);
+  const offObjects = sum.offTable.filter((id) => id !== 0);
+
+  if (sum.cueScratch) foul('scratch');
+  if (sum.firstContact === null) foul('no-contact');
+  else if (sum.firstContact !== lowest) foul('wrong-ball');
+  if (!state.breakShot && sum.firstContact !== null && objectsDown.length === 0 &&
+      offObjects.length === 0 && sum.cushionAfterContact === 0) foul('no-cushion');
+  if (state.breakShot && !(objectsDown.length > 0 || sum.cushionBalls.length >= 4)) foul('illegal-break');
+  if (offObjects.length) foul('off-table');
+
+  const fouled = fouls.length > 0;
+  const nineGone = objectsDown.indexOf(9) >= 0 || offObjects.indexOf(9) >= 0;
+  const over = nineGone && !fouled;
+  const respotted = [];
+  if (!over) {
+    for (const id of offObjects) if (respotted.indexOf(id) < 0) respotted.push(id);
+    if (nineGone && respotted.indexOf(9) < 0) respotted.push(9);
+    for (const id of respotted.slice().sort((a, b) => a - b)) {
+      const [x, y] = respot(balls, id);
+      events.push({ type: 'respot', ball: id, x, y });
+    }
+  }
+  for (const f of fouls) events.push({ type: 'foul', seat, reason: f });
+  if (!over && sum.cueScratch) {
+    const [x, y] = nearestFreeSpot(balls, HEAD_X, H / 2, false, 0);
+    balls[0] = [x, y];
+  }
+
+  const again = !over && !fouled && objectsDown.length > 0;
+  next.over = over;
+  next.winner = over ? seat : null;
+  next.reason = over ? 'nine-pocketed' : null;
+  next.called = null;
+  next.breakShot = false;
+  next.shots = state.shots + 1;
+  if (over) {
+    next.inHand = null;
+    next.turn = seat;
+    events.push({ type: 'gameOver', winner: seat, reason: 'nine-pocketed' });
   } else {
     next.turn = again ? seat : opp;
     next.inHand = fouled ? { kitchen: false } : null;

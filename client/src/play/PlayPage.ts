@@ -2,11 +2,13 @@ import { goToLogin, type User } from '../auth';
 import { api, type MatchState } from './api';
 import { h, button, copyText, absoluteUrl, BTN_PRIMARY, BTN_QUIET, BTN_DANGER } from './dom';
 import { renderChess } from './chess';
+import { renderPool } from './pool';
 
 export type PlayRoute = { kind: 'm'; id: string } | { kind: 'i'; token: string };
 
 const UIS: Record<string, (root: HTMLElement, ctx: { match: MatchState; send: (m: Record<string, unknown>) => Promise<string | null> }) => void> = {
   chess: renderChess,
+  pool: renderPool,
 };
 const TITLES: Record<string, string> = { chess: 'Chess', pool: 'Pool' };
 const rememberKey = (token: string): string => `octopus_play_inv_${token}`;
@@ -99,6 +101,11 @@ async function matchFlow(body: HTMLElement, base: string, matchId: string | null
   let fetching = false;
   const root = h('div', '');
   body.replaceChildren(root);
+  // The stage persists across redraws so a game page can keep state (the pool board
+  // keeps its canvas, so a new shot can animate from the previous position).
+  const top = h('div', '');
+  const stage = h('div', '');
+  root.append(top, stage);
 
   async function refresh(): Promise<void> {
     if (fetching) return;
@@ -110,7 +117,7 @@ async function matchFlow(body: HTMLElement, base: string, matchId: string | null
         current = r.data;
         draw();
       } else if (!current) {
-        root.replaceChildren(h('p', 'px-4 py-10 text-center text-gray-500', 'Could not load the match. Retrying…'));
+        stage.replaceChildren(h('p', 'px-4 py-10 text-center text-gray-500', 'Could not load the match. Retrying…'));
       }
     } finally { fetching = false; }
   }
@@ -130,8 +137,7 @@ async function matchFlow(body: HTMLElement, base: string, matchId: string | null
     const m = current!;
     document.title = `${TITLES[m.type] || m.type} · Octopus Games`;
     const ui = UIS[m.type];
-    const frag = h('div', '');
-    const top = h('div', '');
+    top.replaceChildren();
     // Challenge actions for the invited player
     if (m.status === 'challenge' && m.you.seat !== null && !m.you.creator) {
       top.append(h('div', 'px-4 py-3 flex flex-wrap items-center gap-2 bg-gray-900 border-b border-gray-800',
@@ -152,12 +158,8 @@ async function matchFlow(body: HTMLElement, base: string, matchId: string | null
       top.append(row);
     }
     if (m.you.role === 'spectator') top.append(h('div', 'px-4 py-2 text-xs text-gray-400 bg-gray-900', 'You are watching this game.'));
-    frag.append(top);
-    const stage = h('div', '');
-    frag.append(stage);
-    root.replaceChildren(frag);
     if (ui) ui(stage, { match: m, send });
-    else stage.append(h('p', 'px-4 py-10 text-gray-400', 'This game type is not available here yet.'));
+    else stage.replaceChildren(h('p', 'px-4 py-10 text-gray-400', 'This game type is not available here yet.'));
   }
 
   function stop(): void {

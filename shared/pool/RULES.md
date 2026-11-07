@@ -1,5 +1,9 @@
 # Pool rules as implemented
 
+Two variants, chosen when a match is created (`initialState(seed, { variant })`, stored on
+the state as `variant`; `'8ball'` is the default and what any state without the field is read
+as). **9-ball is described in its own section at the end.**
+
 Edition: **8-ball, called-8 variant, written from the common bar/league rules as
 generally understood** (WPA-style foul and break structure, simplified). It is not
 a transcription of any one federation's rulebook, and nobody has checked it
@@ -9,7 +13,7 @@ difference.
 ## Module
 
 `shared/pool/index.js` exports the plugin
-`{ type: 'pool', title: 'Pool', seats: 2, initialState(seed), applyMove(state, move, seat), view(state, seat | null), status(state) }`.
+`{ type: 'pool', title: 'Pool', seats: 2, variants: ['8ball', '9ball'], initialState(seed, options?), applyMove(state, move, seat), view(state, seat | null), status(state) }`.
 Everything is pure and JSON-serialisable. `applyMove` returns `{ state, events }`
 and throws `IllegalMove` (`error.name === 'IllegalMove'`) for a move that is not
 allowed; it never mutates its input.
@@ -96,3 +100,49 @@ sets `"type": "module"`), and `seed` may be any string or number (hosts pass 16 
   rest hanging in a mouth drops into the nearest pocket.
 - **Not verified against real pool.** The constants (restitution, friction, mouth
   widths) are plausible, not measured.
+
+# 9-ball
+
+`variant: '9ball'`. Same physics, table, moves (`placeCue` and shots; `callPocket` is refused
+because nothing is called) and animation data as 8-ball. `view` adds `variant` and `lowest`
+(the lowest numbered ball on the table), and `targets` is `'lowest'` for both seats.
+
+## Rules
+
+1. **Rack.** Balls 1-9 in a diamond (rows of 1, 2, 3, 2 and 1) with the **1 on the foot
+   spot at the apex** and the **9 in the centre** of the widest row; the other seven are in
+   a seeded order (`rackOrder9`, same mulberry32 as 8-ball, no `Math.random`).
+2. **Break.** Seat 0 breaks, cue ball anywhere behind the head string. It is legal if a
+   ball is pocketed or at least four object balls reach a cushion; otherwise it is an
+   `illegal-break` foul. The first ball hit must be the 1 like any other shot.
+3. **Lowest ball first.** On every shot the first ball the cue ball touches must be the
+   lowest-numbered ball still on the table, else `wrong-ball`. No other foul is special:
+   `scratch`, `no-contact`, `no-cushion` (after the first contact no ball reached a cushion
+   and nothing was pocketed) and `off-table` are as in 8-ball.
+4. **Turn.** After a foul-free shot that pockets **any** ball (any number, in any pocket)
+   the same player shoots again. A foul-free shot that pockets nothing passes the turn.
+   Pocketed balls stay down.
+5. **Winning.** Pocketing the 9 on a **foul-free** shot wins, including a combination (the
+   lowest ball driving the 9 in) and on the break. The reason is `nine-pocketed`.
+6. **9 on a foul.** A 9 pocketed (or knocked off the table) on a shot with any foul is
+   **spotted** on the foot spot (nearest free point if that is taken) and play goes on.
+7. **Ball in hand anywhere.** After any foul the opponent has the cue ball in hand
+   anywhere on the cloth (including after a scratch on the break).
+
+## 9-ball simplifications (every one of them)
+
+- **No push-out** after the break. A full rulebook lets the player after the break shoot a
+  "push" and the opponent choose to take the position or pass; here the shot after the break
+  is an ordinary shot.
+- **No three-foul rule** (three fouls in a row by one player lose the game). Not tracked.
+- **Ball in hand is anywhere after a scratch on the break** as well (full rules: behind the
+  head string).
+- **A ball driven off the table is spotted** on the foot spot and is a foul (physics all but
+  prevents it, as in 8-ball).
+- **A shot that pockets the 9 and fouls does not win**, whatever else it did; the 9 is spotted.
+- **The break must hit the 1 first** (it always does in practice from behind the head string
+  at the apex); there is no separate break-contact rule beyond rule 2.
+- **Win on the break** also needs the break to be foul-free: a 9 on the break that comes
+  with a scratch is spotted.
+- Everything in the 8-ball simplification list about physics (no side spin, no ball-ball
+  throw, capture-disc pockets, not measured against real pool) applies unchanged.
