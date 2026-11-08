@@ -7,6 +7,7 @@ import chessEngine from '../../../shared/chess/index.js';
 import * as Pool from '../../../shared/pool/index.js';
 import type { PoolMove } from '../games/pool/PoolView';
 import { h, button, BTN_PRIMARY } from './dom';
+import { createGameScreen, type GameScreen } from './gameScreen';
 import { renderChess } from './chess';
 import { mountPool, type PoolPanel } from './poolUi';
 import { BotHost, LEVEL_NAMES, type Level } from './bots';
@@ -64,55 +65,52 @@ const sleep = (ms: number): Promise<void> => new Promise(r => setTimeout(r, ms))
 
 // ── the full-screen shell ─────────────────────────────────────────────────────
 interface Shell {
+  screen: GameScreen;
   wrapper: HTMLElement;
   stage: HTMLElement;
-  setThinking(on: boolean, text?: string): void;
   handover(title: string, sub: string, onReady: () => void): void;
   dismissHandover(): void;
+  restoreHub(): void;
   flipBtn: HTMLButtonElement | null;
   newBtn: HTMLButtonElement;
   backBtn: HTMLButtonElement;
 }
 
-function buildShell(title: string, withFlip: boolean): Shell {
-  const wrapper = h('div', 'bg-gray-950 text-white flex flex-col');
-  wrapper.id = 'localGame';
-  wrapper.style.cssText = 'position:fixed;inset:0;z-index:50;height:100vh;height:100dvh;overflow:hidden;';
-  const backBtn = h('button', 'text-sm text-gray-300 hover:text-white px-2 min-h-[44px] shrink-0', '← Back') as HTMLButtonElement;
+function buildShell(kind: 'chess' | 'pool', title: string, badge: string, withFlip: boolean): Shell {
+  const backBtn = h('button', 'g-btn g-btn-ghost', h('span', '', '←'), h('span', '', 'Back')) as HTMLButtonElement;
   backBtn.type = 'button'; backBtn.id = 'localBack';
-  const newBtn = h('button', 'ml-auto px-3 rounded bg-gray-800 hover:bg-gray-700 border border-gray-700 text-sm min-h-[44px] shrink-0', 'New game') as HTMLButtonElement;
+  backBtn.setAttribute('aria-label', 'Back to all games');
+  const newBtn = h('button', 'g-btn', h('span', '', 'New', h('span', 'g-long', ' game'))) as HTMLButtonElement;
   newBtn.type = 'button'; newBtn.id = 'localNew';
   let flipBtn: HTMLButtonElement | null = null;
-  const nav = h('nav', 'bg-gray-900 border-b border-gray-800 flex items-center gap-2 px-2', backBtn, h('span', 'font-bold text-sm sm:text-base truncate', title));
+  const actions: HTMLElement[] = [];
   if (withFlip) {
-    flipBtn = h('button', 'px-3 rounded bg-gray-800 hover:bg-gray-700 border border-gray-700 text-xs min-h-[44px] shrink-0') as HTMLButtonElement;
+    flipBtn = h('button', 'g-btn') as HTMLButtonElement;
     flipBtn.type = 'button'; flipBtn.id = 'localFlip';
-    nav.append(flipBtn);
+    actions.push(flipBtn);
   }
-  nav.append(newBtn);
-  const think = h('div', 'px-4 text-xs text-blue-300 flex items-center gap-2');
-  think.id = 'thinking';
-  think.style.cssText = 'height:24px;visibility:hidden;';
-  const dot = h('span', 'inline-block w-2 h-2 rounded-full bg-blue-400 animate-pulse');
-  const thinkText = h('span', '', 'Computer is thinking…');
-  think.append(dot, thinkText);
-  const stage = h('div', '');
-  stage.style.cssText = 'flex:1 1 auto;min-height:0;overflow-y:auto;position:relative;';
-  stage.id = 'localStage';
-  wrapper.append(nav, think, stage);
+  actions.push(newBtn);
+  const screen = createGameScreen({ kind, title, badge, back: backBtn, actions, fixed: true });
+  const wrapper = screen.el;
+  wrapper.id = 'localGame';
+  // The hub stays mounted underneath; hide it so the page has nothing of its own to scroll.
+  const hub = document.getElementById('app');
+  const hubDisplay = hub ? hub.style.display : '';
+  if (hub) hub.style.display = 'none';
+  const stage = screen.stage;
   document.body.appendChild(wrapper);
 
   let overlay: HTMLElement | null = null;
   const shell: Shell = {
-    wrapper, stage, flipBtn, newBtn, backBtn,
-    setThinking(on, text) { think.style.visibility = on ? 'visible' : 'hidden'; if (text) thinkText.textContent = text; },
+    screen, wrapper, stage, flipBtn, newBtn, backBtn,
+    restoreHub() { if (hub) hub.style.display = hubDisplay; },
     dismissHandover() { overlay?.remove(); overlay = null; },
     handover(t, sub, onReady) {
       shell.dismissHandover();
-      const card = h('div', 'flex flex-col items-center gap-3 text-center px-6',
-        h('div', 'text-3xl font-bold', t), h('div', 'text-gray-300', sub),
+      const card = h('div', 'flex flex-col items-center gap-4 text-center px-6',
+        h('div', 'text-4xl font-extrabold', t), h('div', 'text-lg text-gray-300', sub),
         button('Ready, show the board', BTN_PRIMARY, () => { shell.dismissHandover(); onReady(); }));
-      overlay = h('div', 'absolute inset-0 z-40 bg-gray-950/95 flex items-center justify-center');
+      overlay = h('div', 'g-overlay');
       overlay.id = 'handover';
       overlay.setAttribute('role', 'dialog');
       overlay.setAttribute('aria-label', t);
@@ -157,15 +155,7 @@ function runChess(cfg: LocalConfig, saved: SavedLocal | null, shell: Shell): Run
       game: { turn: st.turn as 0 | 1 | null, over: st.over, winner: st.winner as 0 | 1 | null, reason: st.reason },
       view,
     };
-    let statusOverride: string | null = null;
-    if (!st.over && thinking) statusOverride = 'Computer is thinking…';
-    else if (!st.over && pass) statusOverride = `${names[state.turn]}: your move.${view.check ? ' Check!' : ''}`;
-    else if (st.over && pass) {
-      const why = st.reason === 'checkmate' ? 'checkmate' : String(st.reason || '').replace(/_/g, ' ');
-      statusOverride = st.winner === null ? `Draw by ${why}.` : `${names[st.winner]} wins by ${why}.`;
-    }
-    renderChess(shell.stage, { match, send, local: true, flip: pass && !prefs.flip ? false : undefined, statusOverride });
-    shell.setThinking(thinking);
+    renderChess(shell.screen, { match, send, local: true, pass, flip: pass && !prefs.flip ? false : undefined, cpuSeat: botSeat >= 0 ? botSeat : undefined, thinking: !st.over && thinking });
     if (st.over) clearSaved('chess'); else save(cfg, state);
   }
 
@@ -242,13 +232,13 @@ function runPool(cfg: LocalConfig, saved: SavedLocal | null, shell: Shell): Runn
   let thinking = false;
   let holding = false; // pass and play: a handover card is up and the board is not for use yet
 
-  const panel: PoolPanel = mountPool(shell.stage, {
+  const panel: PoolPanel = mountPool(shell.screen, {
     names,
     localSeat: pass ? null : cfg.humanSeat,
+    cpuSeat: pass ? undefined : botSeat,
+    thinking: () => thinking,
     onMove: (m) => { if (!thinking && !holding) void play(m); },
-    statusOverride: () => (thinking ? 'Computer is thinking…' : null),
   });
-  panel.el.style.height = '100%';
 
   function persist(): void { if (state.over) clearSaved('pool'); else save(cfg, state); }
   function setView(animate: boolean): void { persist(); panel.setView(Pool.view(state, null), animate); }
@@ -294,13 +284,11 @@ function runPool(cfg: LocalConfig, saved: SavedLocal | null, shell: Shell): Runn
   async function botTurn(): Promise<void> {
     const my = ++gen;
     thinking = true;
-    shell.setThinking(true);
     panel.refresh();
     let res: { moves: PoolMove[] } | null = null;
     try { res = await bots.pool(state, cfg.level); } catch { res = null; }
     if (my !== gen) return;
     thinking = false;
-    shell.setThinking(false);
     const moves: PoolMove[] = res ? res.moves : [];
     let shot = false;
     for (const mv of moves) {
@@ -336,7 +324,6 @@ function runPool(cfg: LocalConfig, saved: SavedLocal | null, shell: Shell): Runn
       holding = false;
       lastHolder = 0;
       shell.dismissHandover();
-      shell.setThinking(false);
       state = Pool.initialState(randomSeed(), { variant: cfg.variant });
       clearSaved('pool');
       setView(false);
@@ -349,13 +336,14 @@ function runPool(cfg: LocalConfig, saved: SavedLocal | null, shell: Shell): Runn
 export function launchLocal(cfg: LocalConfig, saved: SavedLocal | null = null): void {
   const gameName = cfg.game === 'chess' ? 'Chess' : cfg.variant === '9ball' ? '9-ball' : '8-ball';
   const modeName = cfg.mode === 'pass' ? 'Pass and play' : `vs Computer (${LEVEL_NAMES[cfg.level]})`;
-  const shell = buildShell(`${cfg.game === 'chess' ? '♞' : '🎱'} ${gameName} · ${modeName}`, cfg.game === 'chess' && cfg.mode === 'pass');
+  const shell = buildShell(cfg.game, `${cfg.game === 'chess' ? '♞' : '🎱'} ${gameName}`, modeName, cfg.game === 'chess' && cfg.mode === 'pass');
   document.title = `${gameName} · Octopus Games`;
   const running = cfg.game === 'chess' ? runChess(cfg, saved, shell) : runPool(cfg, saved, shell);
   shell.newBtn.addEventListener('click', () => running.restart());
   shell.backBtn.addEventListener('click', () => {
     running.destroy();
     shell.wrapper.remove();
+    shell.restoreHub();
     window.dispatchEvent(new Event(CLOSED_EVENT));
   });
 }

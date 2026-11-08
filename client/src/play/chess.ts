@@ -1,5 +1,6 @@
 import { h, button, BTN_DANGER, BTN_QUIET, BTN_PRIMARY } from './dom';
 import type { MatchState } from './api';
+import type { Banner, GameScreen, PlayerCard } from './gameScreen';
 
 interface LegalMove { from: string; to: string; promotion?: string }
 interface ChessView {
@@ -56,19 +57,46 @@ export interface ChessCtx {
   flip?: boolean;
   /** Local play: no draw offers (there is nobody to accept one). */
   local?: boolean;
-  /** Replaces the status line (for example "Computer is thinking"). */
-  statusOverride?: string | null;
+  /** Pass and play: the person holding the device always has the move, so the banner names them. */
+  pass?: boolean;
+  /** The seat the computer plays, if any, and whether it is working out its move. */
+  cpuSeat?: number;
+  thinking?: boolean;
 }
 
 /** Local UI state that survives re-renders from live updates. */
-interface UiState { selected: string | null; promo: { from: string; to: string } | null; confirmResign: boolean }
-const ui = new WeakMap<HTMLElement, UiState>();
+interface UiState { selected: string | null; promo: { from: string; to: string } | null; confirmResign: boolean; checkedAt: number }
+const ui = new WeakMap<GameScreen, UiState>();
 
-export function renderChess(root: HTMLElement, ctx: ChessCtx): void {
+const START: Record<string, number> = { p: 8, n: 2, b: 2, r: 2, q: 1 };
+const VALUE: Record<string, number> = { p: 1, n: 3, b: 3, r: 5, q: 9 };
+const GLYPH: Record<string, string> = { p: '♟', n: '♞', b: '♝', r: '♜', q: '♛', k: '♚' };
+
+/** Pieces each side has lost, worked out from what is still on the board. A promotion can make this
+ *  read a pawn short and a queen long; it is a courtesy display, not a rule. */
+function captured(board: string[]): { byWhite: string[]; byBlack: string[]; adv: number } {
+  const have: Record<string, number> = {};
+  for (const p of board) if (p) have[p] = (have[p] || 0) + 1;
+  const lost = (white: boolean): string[] => {
+    const out: string[] = [];
+    for (const t of ['q', 'r', 'b', 'n', 'p']) {
+      const key = white ? t.toUpperCase() : t;
+      for (let i = 0; i < Math.max(0, START[t] - (have[key] || 0)); i++) out.push(key);
+    }
+    return out;
+  };
+  const sum = (l: string[]): number => l.reduce((a, p) => a + VALUE[p.toLowerCase()], 0);
+  const blackLost = lost(false), whiteLost = lost(true);
+  return { byWhite: blackLost, byBlack: whiteLost, adv: sum(blackLost) - sum(whiteLost) };
+}
+
+const short = (n: string): string => n.replace(/ \((White|Black)\)$/, '');
+
+export function renderChess(screen: GameScreen, ctx: ChessCtx): void {
   const m = ctx.match;
   const v = m.view as ChessView;
-  const st = ui.get(root) ?? { selected: null, promo: null, confirmResign: false };
-  ui.set(root, st);
+  const st = ui.get(screen) ?? { selected: null, promo: null, confirmResign: false, checkedAt: -1 };
+  ui.set(screen, st);
   const seat = m.you.seat;
   const playing = m.status === 'active';
   const myTurn = playing && seat !== null && v.turn === seat;
@@ -79,18 +107,14 @@ export function renderChess(root: HTMLElement, ctx: ChessCtx): void {
   if (st.selected) for (const lm of v.legalMoves) if (lm.from === st.selected) targets.set(lm.to, [...(targets.get(lm.to) || []), lm]);
   const movable = new Set(v.legalMoves.map(l => l.from));
 
-  const wrap = h('div', 'w-full max-w-[560px] mx-auto');
   const nameOf = (s: 0 | 1): string => {
     const x = m.seats[s];
-    return (x.name || 'Waiting for opponent…') + (x.kind === 'guest' ? ' (guest)' : '');
+    return (x.name || 'Opponent') + (x.kind === 'guest' ? ' (guest)' : '');
   };
-  const bar = (s: 0 | 1): HTMLElement => h('div', 'flex items-center justify-between px-4 py-2 text-sm',
-    h('span', 'font-medium text-gray-200 truncate', `${s === 0 ? '⚪' : '⚫'} ${nameOf(s)}`),
-    h('span', 'text-xs text-blue-300 shrink-0', playing && v.turn === s ? 'to move' : ''));
-  wrap.append(bar(flipped ? 0 : 1));
 
   // ── board ──
-  const board = h('div', 'relative grid grid-cols-8 w-full select-none touch-manipulation');
+  const board = h('div', 'g-board-sq relative grid grid-cols-8 grid-rows-8 select-none touch-manipulation rounded-xl overflow-hidden shadow-lg');
+  board.dataset.board = '1';
   board.setAttribute('role', 'grid');
   board.setAttribute('aria-label', 'Chess board');
   for (let row = 0; row < 8; row++) {
@@ -103,7 +127,7 @@ export function renderChess(root: HTMLElement, ctx: ChessCtx): void {
       const isSel = st.selected === sq;
       const isCheck = v.check === sq;
       const bg = isCheck ? 'bg-red-500' : isSel ? 'bg-yellow-300' : isLast ? (dark ? 'bg-yellow-600/70' : 'bg-yellow-200') : dark ? 'bg-slate-600' : 'bg-slate-300';
-      const cell = h('button', `relative aspect-square min-h-[44px] p-0 border-0 ${bg} focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:z-10`) as HTMLButtonElement;
+      const cell = h('button', `relative w-full h-full min-h-0 p-0 border-0 ${bg} focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-white focus-visible:z-10`) as HTMLButtonElement;
       cell.type = 'button';
       cell.dataset.sq = sq;
       cell.setAttribute('aria-label', p ? `${sq} ${p === p.toUpperCase() ? 'white' : 'black'} ${PIECE_NAME[p.toLowerCase()]}` : sq);
@@ -122,25 +146,23 @@ export function renderChess(root: HTMLElement, ctx: ChessCtx): void {
       board.append(cell);
     }
   }
-  wrap.append(board);
-  wrap.append(bar(flipped ? 1 : 0));
 
   async function submit(move: Record<string, unknown>): Promise<void> {
     st.selected = null; st.promo = null; st.confirmResign = false;
     const err = await ctx.send(move);
-    if (err) flash(err);
+    if (err) screen.toast(err, 'info');
   }
   function onSquare(sq: string): void {
     if (!myTurn) return;
     st.confirmResign = false;
     if (st.selected && targets.has(sq)) {
       const opts = targets.get(sq)!;
-      if (opts.some(o => o.promotion)) { st.promo = { from: st.selected, to: sq }; renderChess(root, ctx); return; }
+      if (opts.some(o => o.promotion)) { st.promo = { from: st.selected, to: sq }; renderChess(screen, ctx); return; }
       void submit({ from: st.selected, to: sq });
       return;
     }
     st.selected = st.selected === sq || !movable.has(sq) ? null : sq;
-    renderChess(root, ctx);
+    renderChess(screen, ctx);
   }
 
   // ── promotion picker ──
@@ -149,7 +171,7 @@ export function renderChess(root: HTMLElement, ctx: ChessCtx): void {
     const white = seat === 0;
     const picker = h('div', 'absolute inset-0 z-20 bg-black/60 flex items-center justify-center');
     const card = h('div', 'bg-gray-900 border border-gray-700 rounded-xl p-3 flex flex-col items-center gap-2');
-    card.append(h('div', 'text-sm text-gray-300', 'Promote to'));
+    card.append(h('div', 'text-base text-gray-200', 'Promote to'));
     const row = h('div', 'flex gap-2');
     for (const t of ['q', 'r', 'b', 'n']) {
       const b = h('button', 'w-14 h-14 rounded-lg bg-slate-300 hover:bg-slate-200 p-1') as HTMLButtonElement;
@@ -160,68 +182,98 @@ export function renderChess(root: HTMLElement, ctx: ChessCtx): void {
       b.addEventListener('click', () => void submit({ from: pr.from, to: pr.to, promotion: t }));
       row.append(b);
     }
-    card.append(row, button('Cancel', BTN_QUIET, () => { st.promo = null; st.selected = null; renderChess(root, ctx); }));
+    card.append(row, button('Cancel', BTN_QUIET, () => { st.promo = null; st.selected = null; renderChess(screen, ctx); }));
     picker.append(card);
     board.append(picker);
   }
+  screen.stage.replaceChildren(board);
 
-  // ── status line ──
+  // ── turn banner ──
   const g = m.game;
-  let line = '';
+  const chk = !!v.check;
+  let banner: Banner;
   if (m.status === 'finished' && g) {
     const why = reasonText(g.reason);
-    line = g.winner === null ? `Draw by ${why}.`
-      : seat === null ? `${g.winner === 0 ? 'White' : 'Black'} wins by ${why}.`
-      : g.winner === seat ? `You win by ${why}.` : `You lose by ${why}.`;
+    if (g.winner === null) banner = { tone: 'draw', icon: '🤝', title: 'Draw', sub: `By ${why}` };
+    else if (seat === null || ctx.pass) banner = { tone: 'win', icon: '🏆', title: `${g.winner === 0 ? 'White' : 'Black'} wins`, sub: `By ${why}` };
+    else if (g.winner === seat) banner = { tone: 'win', icon: '🏆', title: 'You win!', sub: `By ${why}` };
+    else banner = { tone: 'loss', icon: '😞', title: 'You lose', sub: `By ${why}` };
   } else if (m.status === 'active') {
-    const chk = v.check ? ' Check!' : '';
-    line = seat === null ? `${v.turn === 0 ? 'White' : 'Black'} to move.${chk}` : myTurn ? `Your move.${chk}` : `Waiting for ${nameOf(v.turn === 0 ? 0 : 1).replace(' (guest)', '')}.${chk}`;
-  } else if (m.status === 'challenge') line = 'Challenge not accepted yet.';
-  else if (m.status === 'open') line = 'Waiting for someone to open the invite link.';
-  else line = `This match was ${m.status}.`;
-  if (ctx.statusOverride) line = ctx.statusOverride;
-  const status = h('div', 'px-4 py-2 text-sm font-medium text-white', line);
-  status.id = 'statusLine';
-  status.setAttribute('role', 'status');
-  wrap.append(status);
-  const msg = h('div', 'px-4 text-sm text-amber-300 min-h-[1.25rem]');
-  msg.id = 'flash';
-  wrap.append(msg);
+    const turn = (v.turn === 0 ? 0 : 1) as 0 | 1;
+    const colour = turn === 0 ? 'White' : 'Black';
+    const offer = v.drawOffer !== null ? (v.drawOffer === seat ? 'You offered a draw' : 'A draw was offered') : '';
+    if (ctx.cpuSeat === turn) {
+      banner = ctx.thinking
+        ? { tone: 'think', icon: '🤖', title: 'Computer is thinking', dots: true, sub: colour }
+        : { tone: 'them', icon: '🤖', title: "Computer's turn", sub: colour };
+    } else if (ctx.pass) {
+      banner = { tone: 'you', icon: turn === 0 ? '♙' : '♟', title: `${short(nameOf(turn))}'s turn`, sub: chk ? `${colour} is in check` : `${colour} to move` };
+    } else if (seat === null) {
+      banner = { tone: 'them', icon: '👀', title: `${colour} to move`, sub: chk ? 'Check · you are watching' : 'You are watching' };
+    } else if (myTurn) {
+      banner = { tone: 'you', icon: '♟', title: 'Your turn', sub: chk ? 'You are in check' : offer || `You are ${seat === 0 ? 'White' : 'Black'}` };
+    } else {
+      banner = { tone: 'wait', icon: '⏳', title: `Waiting for ${short(nameOf(turn))}`, dots: true, sub: chk ? 'They are in check' : offer };
+    }
+  } else if (m.status === 'challenge') banner = { tone: 'wait', icon: '⏳', title: 'Waiting for the challenge to be accepted', dots: true };
+  else if (m.status === 'open') banner = { tone: 'wait', icon: '🔗', title: 'Waiting for someone to open the invite link', dots: true };
+  else banner = { tone: 'neutral', icon: 'ℹ️', title: `This match was ${m.status}` };
+  screen.setBanner(banner);
+  if (playing && v.check && st.checkedAt !== v.history.length) {
+    st.checkedAt = v.history.length;
+    screen.toast('Check!', 'check');
+  }
+
+  // ── players, with what each has captured ──
+  const cap = captured(v.board);
+  const card = (s: 0 | 1): PlayerCard => {
+    const lost = s === 0 ? cap.byWhite : cap.byBlack; // what this side has taken
+    const lead = s === 0 ? cap.adv : -cap.adv;
+    const extra: (Node | string)[] = lost.map(p => { const w = h('span', 'g-cap'); w.append(pieceSvg(p)); w.title = PIECE_NAME[p.toLowerCase()]; return w; });
+    if (lead > 0) extra.push(h('span', 'g-adv', `+${lead}`));
+    const cpu = ctx.cpuSeat === s;
+    const mine = !ctx.pass && seat === s;
+    const white = s === 0;
+    return {
+      name: short(nameOf(s)),
+      role: `${white ? 'White' : 'Black'}${mine ? ' · you' : ''}`,
+      disc: cpu ? '🤖' : GLYPH.k,
+      discStyle: cpu ? '' : `background:${white ? '#f8fafc' : '#1e293b'};color:${white ? '#0f172a' : '#f1f5f9'};`,
+      active: playing && v.turn === s,
+      flag: cpu ? (ctx.thinking ? 'Thinking' : 'To move') : mine ? 'Your turn' : 'To move',
+      extra,
+    };
+  };
+  screen.setPlayers(card(flipped ? 0 : 1), card(flipped ? 1 : 0));
 
   // ── actions ──
+  screen.tools.replaceChildren();
   if (playing && seat !== null) {
-    const acts = h('div', 'px-4 py-2 flex flex-wrap gap-2');
     if (ctx.local) {
       // one device: no offers
     } else if (v.drawOffer !== null && v.drawOffer !== seat) {
-      acts.append(h('span', 'self-center text-sm text-gray-300', 'Draw offered.'),
+      screen.tools.append(h('span', 'text-base font-semibold text-gray-200', 'Draw offered:'),
         button('Accept draw', BTN_PRIMARY, () => void submit({ t: 'acceptDraw' })),
         button('Decline', BTN_QUIET, () => void submit({ t: 'declineDraw' })));
     } else if (v.drawOffer === seat) {
-      acts.append(h('span', 'self-center text-sm text-gray-400', 'Draw offered, waiting for a reply.'));
+      screen.tools.append(h('span', 'text-base text-gray-400', 'Draw offered, waiting for a reply.'));
     } else {
-      acts.append(button('Offer draw', BTN_QUIET, () => void submit({ t: 'offerDraw' })));
+      screen.tools.append(button('Offer draw', BTN_QUIET, () => void submit({ t: 'offerDraw' })));
     }
-    acts.append(button(st.confirmResign ? 'Tap again to resign' : 'Resign', BTN_DANGER, () => {
-      if (!st.confirmResign) { st.confirmResign = true; renderChess(root, ctx); return; }
+    screen.tools.append(button(st.confirmResign ? 'Tap again to resign' : 'Resign', BTN_DANGER, () => {
+      if (!st.confirmResign) { st.confirmResign = true; renderChess(screen, ctx); return; }
       void submit({ t: 'resign' });
     }));
-    wrap.append(acts);
   }
 
   // ── move list ──
-  const list = h('div', 'px-4 pb-6');
-  list.append(h('div', 'text-xs uppercase tracking-wide text-gray-500 mb-1', 'Moves'));
-  const moves = h('ol', 'flex flex-wrap gap-x-3 gap-y-1 text-sm text-gray-200 max-h-40 overflow-y-auto');
+  const moves = h('ol', 'g-moves');
   moves.id = 'moveList';
   for (let i = 0; i < v.history.length; i += 2) {
-    const li = h('li', 'whitespace-nowrap', h('span', 'text-gray-500', `${i / 2 + 1}. `), v.history[i].san + (v.history[i + 1] ? ` ${v.history[i + 1].san}` : ''));
-    moves.append(li);
+    moves.append(h('li', '', h('span', '', `${i / 2 + 1}.`), v.history[i].san + (v.history[i + 1] ? ` ${v.history[i + 1].san}` : '')));
   }
-  if (!v.history.length) moves.append(h('li', 'text-gray-600', 'No moves yet.'));
-  list.append(moves);
-  wrap.append(list);
-
-  root.replaceChildren(wrap);
-  function flash(text: string): void { const f = root.querySelector('#flash'); if (f) f.textContent = text; }
+  if (!v.history.length) moves.append(h('li', 'text-gray-500', 'No moves yet.'));
+  screen.side.replaceChildren(h('h2', 'g-moves-title', 'Moves'), moves);
+  moves.scrollLeft = moves.scrollWidth;
+  screen.side.scrollTop = screen.side.scrollHeight;
 }

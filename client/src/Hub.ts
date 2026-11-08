@@ -253,7 +253,7 @@ function buildWhitelistPicker(mount: HTMLElement, initial: string): { getValue: 
 
 function renderServerCard(s: GameServer, user: User | null, isAdmin: boolean): HTMLElement {
   const card = document.createElement('div');
-  card.className = 'bg-gray-900 border border-gray-700 rounded-2xl p-5 flex flex-col gap-3';
+  card.className = 'g-card flex flex-col gap-3';
 
   // The API only sends serverIP when this viewer may see it (public → anyone,
   // members/whitelist → the logged-in allowed user). So key the details off its
@@ -301,18 +301,18 @@ function renderServerCard(s: GameServer, user: User | null, isAdmin: boolean): H
   card.innerHTML = `
     <div class="flex items-start justify-between gap-2">
       <div class="flex items-center gap-2">
-        <span class="text-3xl">${s.emoji}</span>
+        <span class="g-icon-tile" style="width:48px;height:48px;font-size:1.6rem">${s.emoji}</span>
         <div>
-          <h3 class="text-base font-bold text-white leading-tight">${s.name}</h3>
-          <span class="text-xs text-gray-500">${s.label}</span>
+          <h3 class="g-card-title">${s.name}</h3>
+          <span class="text-sm text-gray-400">${s.label}</span>
         </div>
       </div>
       ${statusBadge(s.status)}
     </div>
-    ${s.description ? `<p class="text-sm text-gray-400 leading-relaxed">${s.description}</p>` : ''}
+    ${s.description ? `<p class="text-base text-gray-300 leading-relaxed">${s.description}</p>` : ''}
     ${connectionInfo}
     <div class="mt-1">
-      <button class="share-btn text-xs px-3 py-1.5 bg-gray-800 hover:bg-gray-700 text-gray-300 border border-gray-700 rounded-lg transition-colors inline-flex items-center gap-1">🔗 Share</button>
+      <button class="share-btn g-btn">🔗 Share</button>
     </div>
     ${adminRow}
   `;
@@ -356,39 +356,44 @@ function renderServerCard(s: GameServer, user: User | null, isAdmin: boolean): H
 
 export function renderHub(user: User | null, onRefresh: () => void): HTMLElement {
   const el = document.createElement('div');
-  el.className = 'min-h-screen bg-gray-950 text-white';
+  el.className = 'min-h-screen';
   const isAdmin = !!user && (user.username === ADMIN_USERNAME || user.role === 'admin');
 
   let activeCategory = 'All';
   let searchQuery = '';
 
   el.innerHTML = `
-    <nav class="bg-gray-900 border-b border-gray-800 px-6 py-3 flex items-center justify-between gap-4 flex-wrap">
-      <span class="font-bold text-blue-400 text-lg">🐙 Octopus Games</span>
-      <div class="flex items-center gap-2 flex-wrap">
-        <button id="tabServers" class="tab-btn px-4 py-1.5 rounded-full text-sm font-medium transition-colors bg-blue-600 text-white">Servers</button>
-        <button id="tabPlay" class="tab-btn px-4 py-1.5 rounded-full text-sm font-medium transition-colors bg-gray-800 text-gray-400 hover:text-white border border-gray-700">Board games</button>
-        <button id="tabGames" class="tab-btn px-4 py-1.5 rounded-full text-sm font-medium transition-colors bg-gray-800 text-gray-400 hover:text-white border border-gray-700">Arcade</button>
-        <button id="tabRef" class="tab-btn px-4 py-1.5 rounded-full text-sm font-medium transition-colors bg-gray-800 text-gray-400 hover:text-white border border-gray-700">Reference</button>
+    <header class="g-header">
+      <div class="g-header-in">
+        <a class="g-brand" href="/" aria-label="Octopus Games home"><span class="g-logo" aria-hidden="true">🐙</span><span class="g-brand-name">Octopus Games</span></a>
+        <nav class="g-tabs" role="tablist" aria-label="Sections">
+          <button id="tabServers" role="tab" class="g-tab" aria-selected="true">Servers</button>
+          <button id="tabPlay" role="tab" class="g-tab" aria-selected="false">Board games</button>
+          <button id="tabGames" role="tab" class="g-tab" aria-selected="false">Arcade</button>
+          <button id="tabRef" role="tab" class="g-tab" aria-selected="false">Reference</button>
+        </nav>
+        <div class="g-account">
+          ${user
+            ? `<span class="g-user">${user.username}</span>${isAdmin ? '<span class="g-tag">admin</span>' : ''}
+               <button id="logoutBtn" class="g-btn g-btn-ghost">Sign out</button>`
+            : `<button id="registerBtn" class="g-btn g-btn-ghost g-hide-sm">Create account</button>
+               <button id="loginBtn" class="g-btn g-btn-primary">Sign in</button>`
+          }
+        </div>
       </div>
-      <div class="flex items-center gap-4">
-        ${user
-          ? `<span class="text-sm text-gray-400">${user.username}${isAdmin ? ' <span class="text-xs text-blue-400">(admin)</span>' : ''}</span>
-             <button id="logoutBtn" class="text-sm text-gray-500 hover:text-gray-300 transition-colors">Sign out</button>`
-          : `<button id="registerBtn" class="text-sm text-gray-400 hover:text-white transition-colors">Create account</button>
-             <button id="loginBtn" class="text-sm px-3 py-1 bg-blue-700 hover:bg-blue-600 text-white rounded-lg transition-colors">Sign in</button>`
-        }
-      </div>
-    </nav>
-    <main class="max-w-5xl mx-auto px-4 py-10">
+    </header>
+    <main class="g-main">
       <!-- Servers tab -->
       <div id="serversTab">
-        <div class="flex items-center justify-between mb-6">
-          <h2 class="text-xl font-bold text-white">Game Servers</h2>
-          <button id="refreshServers" class="text-xs text-gray-500 hover:text-gray-300 transition-colors">↻ Refresh</button>
+        <div class="flex items-start justify-between gap-4 mb-5 flex-wrap">
+          <div>
+            <h2 class="g-page-title">Game Servers</h2>
+            <p class="g-lede" style="margin-bottom:0">Community servers you can join, with their addresses and status.</p>
+          </div>
+          <button id="refreshServers" class="g-btn">↻ Refresh</button>
         </div>
-        <div id="serverGrid" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
-          <div class="col-span-full text-center text-gray-600 py-12">Loading servers…</div>
+        <div id="serverGrid" class="g-grid">
+          <div class="col-span-full text-center text-gray-500 py-12">Loading servers…</div>
         </div>
       </div>
       <!-- Reference tab -->
@@ -397,16 +402,17 @@ export function renderHub(user: User | null, onRefresh: () => void): HTMLElement
       <div id="playTab" class="hidden"></div>
       <!-- Arcade tab -->
       <div id="arcadeTab" class="hidden">
+        <h2 class="g-page-title">Arcade</h2>
+        <p class="g-lede">Quick games that run right in the browser. Your scores and controls follow your account.</p>
         <div class="flex items-center gap-2 mb-6 flex-wrap">
-          <input id="searchInput" type="text" placeholder="Search games…"
-            class="bg-gray-800 border border-gray-700 focus:border-blue-500 rounded-lg px-3 py-1.5 text-sm text-white outline-none placeholder:text-gray-600 w-48 mr-2" />
-          <span class="text-sm text-gray-500 mr-1">Category:</span>
+          <input id="searchInput" type="search" placeholder="Search games…" aria-label="Search games"
+            class="g-field" style="max-width:16rem;margin-right:8px" />
           ${CATEGORIES.map(cat => `
-            <button data-cat="${cat}" class="cat-btn px-3 py-1 rounded-full text-sm font-medium transition-colors ${cat === 'All' ? 'bg-blue-600 text-white' : 'bg-gray-800 text-gray-400 hover:text-white border border-gray-700'}">${cat}</button>
+            <button data-cat="${cat}" class="cat-btn g-chip" aria-pressed="${cat === 'All'}">${cat}</button>
           `).join('')}
         </div>
-        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5" id="gameGrid"></div>
-        <p id="emptyMsg" class="hidden text-center text-gray-600 py-16">No games found.</p>
+        <div class="g-grid" id="gameGrid"></div>
+        <p id="emptyMsg" class="hidden text-center text-gray-500 py-16">No games found.</p>
       </div>
     </main>
   `;
@@ -430,12 +436,9 @@ export function renderHub(user: User | null, onRefresh: () => void): HTMLElement
     arcadeTab.classList.toggle('hidden',  tab !== 'games');
     refTab.classList.toggle('hidden',     tab !== 'ref');
     playTab.classList.toggle('hidden',    tab !== 'play');
-    const active = 'bg-blue-600 text-white';
-    const inactive = 'bg-gray-800 text-gray-400 hover:text-white border border-gray-700';
-    tabServersBtn.className = `tab-btn px-4 py-1.5 rounded-full text-sm font-medium transition-colors ${tab === 'servers' ? active : inactive}`;
-    tabGamesBtn.className   = `tab-btn px-4 py-1.5 rounded-full text-sm font-medium transition-colors ${tab === 'games'   ? active : inactive}`;
-    tabRefBtn.className     = `tab-btn px-4 py-1.5 rounded-full text-sm font-medium transition-colors ${tab === 'ref'     ? active : inactive}`;
-    tabPlayBtn.className    = `tab-btn px-4 py-1.5 rounded-full text-sm font-medium transition-colors ${tab === 'play'    ? active : inactive}`;
+    for (const [t, btn] of [['servers', tabServersBtn], ['games', tabGamesBtn], ['ref', tabRefBtn], ['play', tabPlayBtn]] as [Tab, HTMLButtonElement][]) {
+      btn.setAttribute('aria-selected', String(t === tab));
+    }
     if (tab === 'play' && !playRendered) {
       playTab.appendChild(renderPlayHub(user));
       playRendered = true;
@@ -465,11 +468,11 @@ export function renderHub(user: User | null, onRefresh: () => void): HTMLElement
   const serverGrid = el.querySelector('#serverGrid') as HTMLElement;
 
   async function loadServers() {
-    serverGrid.innerHTML = '<div class="col-span-full text-center text-gray-600 py-12">Loading servers…</div>';
+    serverGrid.innerHTML = '<div class="col-span-full text-center text-gray-500 py-12">Loading servers…</div>';
     const servers = await fetchServers();
     serverGrid.innerHTML = '';
     if (servers.length === 0) {
-      serverGrid.innerHTML = '<div class="col-span-full text-center text-gray-700 py-12">No public servers right now.</div>';
+      serverGrid.innerHTML = '<div class="col-span-full text-center text-gray-500 py-12">No public servers right now.</div>';
       return;
     }
     for (const s of servers) {
@@ -496,10 +499,7 @@ export function renderHub(user: User | null, onRefresh: () => void): HTMLElement
   el.querySelectorAll('.cat-btn').forEach(btn => {
     btn.addEventListener('click', () => {
       activeCategory = (btn as HTMLElement).dataset.cat!;
-      el.querySelectorAll('.cat-btn').forEach(b => {
-        const active = b === btn;
-        b.className = `cat-btn px-3 py-1 rounded-full text-sm font-medium transition-colors ${active ? 'bg-blue-600 text-white' : 'bg-gray-800 text-gray-400 hover:text-white border border-gray-700'}`;
-      });
+      el.querySelectorAll('.cat-btn').forEach(b => b.setAttribute('aria-pressed', String(b === btn)));
       renderGrid();
     });
   });
@@ -538,7 +538,7 @@ export function renderHub(user: User | null, onRefresh: () => void): HTMLElement
       const canPlay = canPlayArcade(setting, user);
 
       const card = document.createElement('div');
-      card.className = `bg-gray-900 border rounded-2xl p-5 flex flex-col gap-3 transition-all ${game.available ? 'border-gray-700 hover:border-blue-600 cursor-pointer hover:shadow-lg hover:shadow-blue-900/20' : 'border-gray-800 opacity-50'}`;
+      card.className = `g-card g-game-card ${game.available && canPlay ? 'is-live' : 'opacity-60'}`;
 
       const adminToggle = isAdmin ? `
         <div class="flex flex-col gap-2 pt-2 border-t border-gray-800">
@@ -556,16 +556,16 @@ export function renderHub(user: User | null, onRefresh: () => void): HTMLElement
         </div>` : '';
 
       card.innerHTML = `
-        <div class="flex items-start justify-between">
-          <span class="text-4xl">${game.emoji}</span>
-          <span class="text-xs px-2 py-0.5 rounded-full font-medium ${catColor[game.category] ?? 'bg-gray-800 text-gray-400'}">${game.category}</span>
+        <div class="flex items-start justify-between gap-3">
+          <span class="g-icon-tile" style="width:64px;height:64px;font-size:2.4rem" aria-hidden="true">${game.emoji}</span>
+          <span class="text-xs px-2.5 py-1 rounded-full font-bold ${catColor[game.category] ?? 'bg-gray-800 text-gray-400'}">${game.category}</span>
         </div>
         <div>
-          <h3 class="text-base font-bold">${game.title}</h3>
-          <p class="text-gray-400 text-sm mt-1 leading-relaxed">${game.description}</p>
+          <h3 class="g-card-title">${game.title}</h3>
+          <p class="g-card-desc">${game.description}</p>
         </div>
-        <button class="play-btn mt-auto px-4 py-2 rounded-lg text-sm font-semibold transition-colors ${game.available && canPlay ? 'bg-blue-600 hover:bg-blue-500 text-white' : 'bg-gray-800 text-gray-600 cursor-not-allowed'}">
-          ${game.available ? (canPlay ? 'Play' : '🔒 No access') : 'Coming Soon'}
+        <button class="play-btn g-btn ${game.available && canPlay ? 'g-btn-primary' : ''} g-btn-block mt-auto" ${game.available && canPlay ? '' : 'disabled'}>
+          ${game.available ? (canPlay ? '▶ Play' : '🔒 No access') : 'Coming Soon'}
         </button>
         ${adminToggle}
       `;
