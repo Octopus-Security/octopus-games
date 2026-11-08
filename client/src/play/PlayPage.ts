@@ -4,6 +4,7 @@ import { h, button, copyText, absoluteUrl, BTN_PRIMARY, BTN_QUIET, BTN_DANGER } 
 import { renderChess } from './chess';
 import { renderPool } from './pool';
 import { createGameScreen, type GameScreen } from './gameScreen';
+import { setGameIcon } from '../gameIcons';
 
 export type PlayRoute = { kind: 'm'; id: string } | { kind: 'i'; token: string };
 
@@ -139,6 +140,7 @@ async function matchFlow(host: HTMLElement, base: string, matchId: string | null
     const m = current!;
     const ui = UIS[m.type];
     document.title = `${TITLES[m.type] || m.type} · Octopus Games`;
+    setGameIcon(m.type);
     if (!ui) { notice(host, 'Not available', 'This game type is not available here yet.'); return; }
     if (!screen) {
       const back = h('a', 'g-btn g-btn-ghost', h('span', '', '←'), h('span', '', 'All games')) as HTMLAnchorElement;

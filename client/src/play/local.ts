@@ -12,6 +12,7 @@ import { renderChess } from './chess';
 import { mountPool, type PoolPanel } from './poolUi';
 import { BotHost, LEVEL_NAMES, type Level } from './bots';
 import type { MatchState } from './api';
+import { setGameIcon, resetGameIcon } from '../gameIcons';
 
 export type LocalGame = 'chess' | 'pool';
 export type LocalMode = 'pass' | 'cpu';
@@ -338,12 +339,14 @@ export function launchLocal(cfg: LocalConfig, saved: SavedLocal | null = null): 
   const modeName = cfg.mode === 'pass' ? 'Pass and play' : `vs Computer (${LEVEL_NAMES[cfg.level]})`;
   const shell = buildShell(cfg.game, `${cfg.game === 'chess' ? '♞' : '🎱'} ${gameName}`, modeName, cfg.game === 'chess' && cfg.mode === 'pass');
   document.title = `${gameName} · Octopus Games`;
+  setGameIcon(cfg.game);
   const running = cfg.game === 'chess' ? runChess(cfg, saved, shell) : runPool(cfg, saved, shell);
   shell.newBtn.addEventListener('click', () => running.restart());
   shell.backBtn.addEventListener('click', () => {
     running.destroy();
     shell.wrapper.remove();
     shell.restoreHub();
+    resetGameIcon();
     window.dispatchEvent(new Event(CLOSED_EVENT));
   });
 }

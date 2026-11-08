@@ -8,6 +8,7 @@ import { launchSudoku } from './games/sudoku/index';
 import { launchBlackjack } from './games/blackjack/index';
 import { launchFrogger } from './games/frogger/index';
 import { launchGalaga } from './games/galaga/index';
+import { showIconWhileHubHidden } from './gameIcons';
 
 const ADMIN_USERNAME = 'psychopathy';
 
@@ -574,7 +575,7 @@ export function renderHub(user: User | null, onRefresh: () => void): HTMLElement
         card.querySelector('.play-btn')!.addEventListener('click', (e) => {
           e.stopPropagation();
           if (!user) goToLogin(false);
-          else game.launch(el, user);
+          else { game.launch(el, user); showIconWhileHubHidden(el, game.slug, game.category); }
         });
       }
 

@@ -1,0 +1,11 @@
+export const FULL_PULL_PX: number;
+export const MIN_POWER: number;
+export const AIM_DEADZONE: number;
+export const CHARGE_MS: number;
+export const FINE_STEP: number;
+export const COARSE_STEP: number;
+export function aimAngleFromPointer(cue: [number, number], pointer: [number, number]): number | null;
+export function powerFromDrag(dx: number, dy: number, full?: number): number;
+export function powerFromHold(ms: number): number;
+export function isShot(power: number): boolean;
+export function stepAngle(angle: number, dir: number, coarse?: boolean): number;
