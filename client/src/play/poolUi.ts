@@ -4,6 +4,7 @@
 // both look and behave the same. It knows nothing about who the players are beyond the
 // names it is given.
 import { groupOf } from '../../../shared/pool/index.js';
+import { powerFromDrag, powerFromHold, isShot } from '../../../shared/pool/aim.js';
 import { PoolBoard, ballColor, REASONS, FOULS, type PoolViewState, type PoolMove } from '../games/pool/PoolView';
 import { h } from './dom';
 import type { Banner, GameScreen, PlayerCard } from './gameScreen';
@@ -44,7 +45,7 @@ function chip(id: number): HTMLElement {
   return el;
 }
 
-const DEFAULT_HINT = 'Drag back from anywhere on the table to aim, then release to shoot.';
+const DEFAULT_HINT = 'Touch the table to aim (arrow keys fine-tune), then pull back the power control and let go to shoot. Hold Space to charge.';
 const SOLIDS = [1, 2, 3, 4, 5, 6, 7];
 const STRIPES = [9, 10, 11, 12, 13, 14, 15];
 
@@ -133,7 +134,19 @@ export function mountPool(screen: GameScreen, opts: PoolPanelOpts): PoolPanel {
   const hintEl = h('span', 'g-hint', opts.hint || DEFAULT_HINT);
   const left = h('span', 'g-table-left');
   left.id = 'poolTray';
-  screen.tools.replaceChildren(spinBox, left, hintEl);
+  // Power: a separate pull-back control, so aiming never needs the pointer to leave the table.
+  const fill = h('span', 'g-power-fill');
+  const readout = h('span', 'g-power-read', 'Pull back to shoot');
+  const power = h('div', 'g-power', fill, readout);
+  power.id = 'poolPower';
+  power.tabIndex = 0;
+  power.setAttribute('role', 'slider');
+  power.setAttribute('aria-label', 'Shot power: drag left or down, release to shoot. Hold Space to charge.');
+  power.setAttribute('aria-valuemin', '0');
+  power.setAttribute('aria-valuemax', '100');
+  power.setAttribute('aria-valuenow', '0');
+  power.style.touchAction = 'none';
+  screen.tools.replaceChildren(spinBox, power, left, hintEl);
 
   let view: PoolViewState | null = null;
   let toastedShot = -1;
@@ -145,6 +158,80 @@ export function mountPool(screen: GameScreen, opts: PoolPanelOpts): PoolPanel {
     onNotice: (t) => panel.setNotice(t),
     onMove: (m) => opts.onMove(m),
   });
+
+  // ---- power control (pointer: touch, mouse, pen) and keyboard
+  let powerPointer = -1;
+  let startX = 0, startY = 0;
+  let spaceFrom = 0, spaceRaf = 0;
+  const showPower = (p: number): void => {
+    const pct = Math.round(p * 100);
+    fill.style.width = `${pct}%`;
+    fill.style.background = `hsl(${120 - 120 * p}, 75%, 50%)`;
+    power.setAttribute('aria-valuenow', String(pct));
+    readout.textContent = p > 0 ? `${pct}%` : 'Pull back to shoot';
+    board.setPower(p);
+  };
+  const endCharge = (shoot: boolean, p: number): void => {
+    powerPointer = -1;
+    window.cancelAnimationFrame(spaceRaf);
+    spaceFrom = 0;
+    power.classList.remove('is-active');
+    showPower(0);
+    if (shoot && isShot(p)) board.fire(p);
+  };
+  power.addEventListener('pointerdown', (e) => {
+    if (powerPointer !== -1 || spaceFrom || !board.canShoot()) return;
+    e.preventDefault();
+    powerPointer = e.pointerId;
+    startX = e.clientX; startY = e.clientY;
+    try { power.setPointerCapture(e.pointerId); } catch { /* not fatal */ }
+    power.classList.add('is-active');
+    showPower(0);
+  });
+  power.addEventListener('pointermove', (e) => {
+    if (e.pointerId !== powerPointer) return;
+    showPower(powerFromDrag(e.clientX - startX, e.clientY - startY));
+  });
+  power.addEventListener('pointerup', (e) => {
+    if (e.pointerId !== powerPointer) return;
+    endCharge(true, powerFromDrag(e.clientX - startX, e.clientY - startY));
+  });
+  power.addEventListener('pointercancel', (e) => { if (e.pointerId === powerPointer) endCharge(false, 0); });
+  power.addEventListener('lostpointercapture', (e) => { if (e.pointerId === powerPointer) endCharge(false, 0); });
+
+  const typing = (t: EventTarget | null): boolean => {
+    const el = t as HTMLElement | null;
+    return !!el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.tagName === 'SELECT' || el.isContentEditable);
+  };
+  const onKeyDown = (e: KeyboardEvent): void => {
+    if (typing(e.target) || e.ctrlKey || e.metaKey || e.altKey || !host.isConnected) return;
+    if (e.key === 'ArrowLeft' || e.key === 'ArrowUp' || e.key === 'ArrowRight' || e.key === 'ArrowDown') {
+      if (!board.canShoot()) return;
+      e.preventDefault();
+      board.nudgeAim(e.key === 'ArrowLeft' || e.key === 'ArrowUp' ? -1 : 1, e.shiftKey);
+    } else if (e.key === ' ' || e.code === 'Space') {
+      if ((e.target as HTMLElement | null)?.tagName === 'BUTTON' || !board.canShoot()) return;
+      e.preventDefault();
+      if (e.repeat || spaceFrom || powerPointer !== -1) return;
+      spaceFrom = performance.now();
+      power.classList.add('is-active');
+      const tick = (): void => {
+        if (!spaceFrom) return;
+        showPower(powerFromHold(performance.now() - spaceFrom));
+        spaceRaf = window.requestAnimationFrame(tick);
+      };
+      tick();
+    } else if (e.key === 'Escape' && (spaceFrom || powerPointer !== -1)) {
+      endCharge(false, 0);
+    }
+  };
+  const onKeyUp = (e: KeyboardEvent): void => {
+    if (!spaceFrom || (e.key !== ' ' && e.code !== 'Space')) return;
+    e.preventDefault();
+    endCharge(true, powerFromHold(performance.now() - spaceFrom));
+  };
+  document.addEventListener('keydown', onKeyDown);
+  document.addEventListener('keyup', onKeyUp);
 
   function foulToast(v: PoolViewState, animate: boolean): void {
     const ls = v.lastShot;
@@ -176,6 +263,7 @@ export function mountPool(screen: GameScreen, opts: PoolPanelOpts): PoolPanel {
     refresh() {
       if (!view) return;
       board.setLocalSeat(opts.localSeat);
+      power.setAttribute('aria-disabled', board.canShoot() ? 'false' : 'true');
       hintEl.textContent = opts.hint || DEFAULT_HINT;
       const wait = opts.statusOverride?.();
       screen.setBanner(wait ? { tone: 'wait', icon: '⏳', title: wait, dots: /^Waiting/.test(wait) } : poolBanner(view, opts));
@@ -195,6 +283,9 @@ export function mountPool(screen: GameScreen, opts: PoolPanelOpts): PoolPanel {
     isAnimating: () => board.isAnimating(),
     destroy() {
       window.clearInterval(idleTimer);
+      window.cancelAnimationFrame(spaceRaf);
+      document.removeEventListener('keydown', onKeyDown);
+      document.removeEventListener('keyup', onKeyUp);
       board.destroy();
     },
   };

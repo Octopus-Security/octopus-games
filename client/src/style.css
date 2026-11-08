@@ -252,6 +252,12 @@ input, select, textarea { font-size: 16px; }
 .g-tools-actions:empty { display: none; }
 .g-spin { display: inline-flex; align-items: center; gap: 10px; min-height: 44px; padding: 0 14px; border-radius: 14px; background: var(--o-surface); border: 1px solid var(--o-border); font-size: 0.9375rem; font-weight: 600; color: var(--o-muted); }
 .g-spin input[type="range"] { width: clamp(120px, 22vw, 220px); height: 44px; accent-color: var(--o-accent); }
+.g-power { position: relative; display: inline-flex; align-items: center; justify-content: center; flex: 0 1 240px; min-width: 130px; width: clamp(130px, 28vw, 240px); min-height: 44px; border-radius: 14px; background: var(--o-surface); border: 1px solid var(--o-border); overflow: hidden; cursor: grab; touch-action: none; user-select: none; -webkit-user-select: none; }
+.g-power[aria-disabled="true"] { opacity: 0.5; cursor: not-allowed; }
+.g-power.is-active { cursor: grabbing; border-color: var(--o-accent); }
+.g-power:focus-visible { outline: 2px solid var(--o-accent); outline-offset: 2px; }
+.g-power-fill { position: absolute; right: 0; top: 0; bottom: 0; width: 0; background: #3ecf6e; opacity: 0.55; pointer-events: none; }
+.g-power-read { position: relative; font-size: 0.9375rem; font-weight: 700; color: var(--o-text, inherit); pointer-events: none; font-variant-numeric: tabular-nums; }
 .g-hint { font-size: 0.875rem; color: var(--o-dim); }
 .g-table-left { display: inline-flex; align-items: center; gap: 6px; min-height: 44px; padding: 0 14px; border-radius: 14px; background: var(--o-surface); border: 1px solid var(--o-border); font-size: 0.9375rem; color: var(--o-muted); font-weight: 600; }
 @media (max-width: 899px) { .g-hint { display: none; } }
@@ -259,7 +265,8 @@ input, select, textarea { font-size: 16px; }
   .g-long { display: none !important; }
   .g-spin { padding: 0 10px; gap: 6px; }
   .g-spin > span:first-child { display: none; }
-  .g-spin input[type="range"] { width: clamp(90px, 26vw, 220px); }
+  .g-spin input[type="range"] { width: clamp(70px, 18vw, 220px); }
+  .g-power { min-width: 110px; width: 34vw; }
   .g-tools-actions .g-btn { padding: 0 12px; }
   .g-game .g-header-in .g-btn { padding: 0 10px; }
 }

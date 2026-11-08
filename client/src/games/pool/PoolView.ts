@@ -4,6 +4,7 @@
 // The same class serves the practice page (both seats on one device) and, later,
 // the multiplayer table (localSeat = your seat).
 
+import { aimAngleFromPointer, isShot, stepAngle } from '../../../../shared/pool/aim.js';
 import {
   W, H, R, POCKETS, HEAD_X, FOOT_X, aimGuide, cuePlacementProblem,
   type PoolView as PoolViewState, type PoolMove,
@@ -12,8 +13,6 @@ import {
 export type { PoolViewState, PoolMove };
 
 const RAIL = 78; // wooden rail thickness, table units
-const MAX_PULL = 560; // drag distance for full power, table units
-const MIN_PULL = 70; // drags shorter than this cancel the shot
 const POCKET_TAP = 120; // how close to a pocket a tap must be to call it
 
 export const BALL_COLORS = [
@@ -34,6 +33,8 @@ export interface PoolBoardOptions {
 }
 
 type Mode = 'idle' | 'aim' | 'dragcue' | 'tapcall';
+
+/** Power (0..1) the board is showing, for the cue pull-back and the on-table readout. */
 
 interface Anim { tracks: (number[] | null)[]; count: number; dt: number; start: number }
 
@@ -58,6 +59,7 @@ export class PoolBoard {
   private mode: Mode = 'idle';
   private pointerId = -1;
   private aimAngle = 0;
+  private aimSet = false; // an aim exists (default, tap or keys) so the cue and guide are drawn
   private aimPower = 0;
   private dragCue: [number, number] | null = null;
   private tapPocket = -1;
@@ -93,8 +95,10 @@ export class PoolBoard {
     // The same state arriving twice (a live-update refetch and the reply to our own move)
     // must not cut a replay short.
     const repeat = this.seenShots >= 0 && v.shots === this.seenShots;
+    const newTurn = !this.view || v.shots !== this.view.shots;
     this.view = v;
     this.seenShots = v.shots;
+    if (newTurn || !this.aimSet) this.defaultAim();
     this.mode = 'idle';
     this.dragCue = null;
     this.aimPower = 0;
@@ -103,6 +107,42 @@ export class PoolBoard {
     } else if (!repeat) {
       this.anim = null;
     }
+  }
+
+  /** Start aimed at the middle of the other balls, so the cue is visible before anyone touches anything. */
+  private defaultAim(): void {
+    const v = this.view;
+    const cue = v?.balls[0];
+    if (!v || !cue) { this.aimSet = false; return; }
+    let sx = 0, sy = 0, n = 0;
+    for (let i = 1; i < v.balls.length; i++) { const b = v.balls[i]; if (b) { sx += b[0]; sy += b[1]; n++; } }
+    const a = n ? aimAngleFromPointer([cue[0], cue[1]], [sx / n, sy / n]) : null;
+    this.aimAngle = a ?? 0;
+    this.aimSet = true;
+  }
+
+  /** Live power preview from the power control (0 = none). Drawn as the cue pulling back. */
+  setPower(p: number): void {
+    this.aimPower = this.canShoot() ? Math.max(0, Math.min(1, p)) : 0;
+  }
+
+  /** Arrow keys: turn the aim a notch. */
+  nudgeAim(dir: -1 | 1, coarse: boolean): void {
+    if (!this.canShoot() || !this.aimSet) return;
+    this.aimAngle = stepAngle(this.aimAngle, dir, coarse);
+  }
+
+  /** Take the shot at the current aim. False when it was refused (not your turn, cancelled, 8-ball needs a call). */
+  fire(power: number): boolean {
+    const v = this.view;
+    this.aimPower = 0;
+    if (!v || !this.canShoot() || !this.aimSet || !isShot(power)) return false;
+    if (v.mustCall) {
+      this.opts.onNotice?.('Call a pocket for the 8 first: tap one of the six pockets.');
+      return false;
+    }
+    this.opts.onMove({ angle: this.aimAngle, power, spinY: this.opts.getSpin ? this.opts.getSpin() : 0 });
+    return true;
   }
 
   /** Who this device plays can change on a live board (a match that starts, a seat taken). */
@@ -150,7 +190,7 @@ export class PoolBoard {
 
   // ------------------------------------------------------------ input
 
-  private canShoot(): boolean {
+  canShoot(): boolean {
     const v = this.view;
     if (!v || v.over || this.anim) return false;
     if (this.opts.localSeat !== null && this.opts.localSeat !== v.turn) return false;
@@ -215,16 +255,7 @@ export class PoolBoard {
       this.dragCue = null;
       if (Math.hypot(cx - v.balls[0]![0], cy - v.balls[0]![1]) > 1) this.opts.onMove({ placeCue: { x: cx, y: cy } });
     } else if (mode === 'aim') {
-      this.updateAim(x, y);
-      const power = this.aimPower;
-      this.aimPower = 0;
-      if (power > 0) {
-        if (v.mustCall) {
-          this.opts.onNotice?.('Call a pocket for the 8 first: tap one of the six pockets.');
-          return;
-        }
-        this.opts.onMove({ angle: this.aimAngle, power, spinY: this.opts.getSpin ? this.opts.getSpin() : 0 });
-      }
+      this.updateAim(x, y); // releasing only sets the direction; the power control shoots
     }
   };
 
@@ -233,19 +264,13 @@ export class PoolBoard {
     this.mode = 'idle';
     this.pointerId = -1;
     this.dragCue = null;
-    this.aimPower = 0;
   };
 
   private updateAim(x: number, y: number): void {
     const cue = this.view!.balls[0]!;
-    const dx = cue[0] - x, dy = cue[1] - y;
-    const dist = Math.hypot(dx, dy);
-    this.aimAngle = Math.atan2(dy, dx); // you pull back; the ball goes the other way
-    this.aimPower = dist < MIN_PULL ? 0 : Math.min(1, (dist - MIN_PULL * 0.5) / (MAX_PULL - MIN_PULL * 0.5));
-    if (dist >= MIN_PULL && this.aimPower < 0.03) this.aimPower = 0.03;
-    this.aimDrawDist = dist;
+    const a = aimAngleFromPointer([cue[0], cue[1]], [x, y]); // the ball goes toward the pointer
+    if (a !== null) { this.aimAngle = a; this.aimSet = true; }
   }
-  private aimDrawDist = 0;
 
   private nearestPocket(x: number, y: number): number {
     let best = -1, bd = POCKET_TAP;
@@ -307,7 +332,7 @@ export class PoolBoard {
     if (!v) return;
     const pos = this.positions();
     this.drawPocketHints(c, v);
-    const showAim = this.mode === 'aim' && this.canShoot() && pos[0];
+    const showAim = this.aimSet && this.canShoot() && pos[0];
     if (showAim) this.drawGuide(c, pos);
     for (let i = 1; i < 16; i++) if (pos[i]) this.drawBall(c, i, pos[i]!);
     if (pos[0]) {
@@ -416,7 +441,6 @@ export class PoolBoard {
 
   private drawGuide(c: CanvasRenderingContext2D, pos: ([number, number, number] | null)[]): void {
     const v = this.view!;
-    if (this.aimPower <= 0 && this.aimDrawDist < 20) return;
     const balls = v.balls.map((b, i) => (pos[i] && i === 0 ? [pos[0]![0], pos[0]![1]] as [number, number] : b));
     const g = aimGuide(balls, this.aimAngle);
     const cx = balls[0]![0], cy = balls[0]![1];
@@ -441,7 +465,7 @@ export class PoolBoard {
   }
 
   private drawCue(c: CanvasRenderingContext2D, cue: [number, number, number]): void {
-    const dx = Math.cos(this.aimAngle), dy = Math.sin(this.aimAngle);
+    const dx = Math.cos(this.aimAngle), dy = Math.sin(this.aimAngle); // travel direction; the cue sits behind the ball
     const gap = R + 18 + this.aimPower * 320;
     const len = 1100;
     const x0 = cue[0] - dx * gap, y0 = cue[1] - dy * gap;
@@ -457,10 +481,21 @@ export class PoolBoard {
     c.strokeStyle = '#7fb6d8'; c.lineWidth = 17;
     c.beginPath(); c.moveTo(x0, y0); c.lineTo(x0 - dx * 18, y0 - dy * 18); c.stroke();
     c.restore();
-    // power bar beside the cue ball
-    const bx = cue[0] - dx * (gap + 140), by = cue[1] - dy * (gap + 140);
-    c.fillStyle = `hsl(${120 - 120 * this.aimPower}, 75%, 55%)`;
-    c.beginPath(); c.arc(bx, by, 14 + 22 * this.aimPower, 0, Math.PI * 2); c.fill();
+    // power readout beside the cue ball: a dot that grows and a percentage, upright whatever the table's rotation
+    if (this.aimPower > 0) {
+      const bx = cue[0] - dx * (gap + 140), by = cue[1] - dy * (gap + 140);
+      c.fillStyle = `hsl(${120 - 120 * this.aimPower}, 75%, 55%)`;
+      c.beginPath(); c.arc(bx, by, 14 + 22 * this.aimPower, 0, Math.PI * 2); c.fill();
+      c.save();
+      c.translate(bx, by);
+      if (this.vertical) c.rotate(Math.PI / 2);
+      c.font = '700 44px system-ui, sans-serif';
+      c.textAlign = 'center'; c.textBaseline = 'middle';
+      c.lineWidth = 8; c.strokeStyle = 'rgba(0,0,0,0.7)'; c.fillStyle = '#fff';
+      const label = `${Math.round(this.aimPower * 100)}%`;
+      c.strokeText(label, 0, -70); c.fillText(label, 0, -70);
+      c.restore();
+    }
   }
 }
 
@@ -511,7 +546,7 @@ export function statusText(v: PoolViewState, names: [string, string], localSeat:
   const tgt = v.targets[t];
   const group = v.variant === '9ball' ? `lowest ball: the ${v.lowest}`
     : tgt === 'open' ? 'open table' : tgt === 'eight' ? 'shoot the 8' : `${tgt}s`;
-  let hint = 'Drag back from anywhere to aim, release to shoot.';
+  let hint = 'Touch the table to aim, then pull back the power control to shoot.';
   if (v.mustCall) hint = 'Tap a pocket to call it for the 8.';
   else if (v.inHand) hint = 'Ball in hand: drag the cue ball to move it, or aim as usual.';
   return `${foul}${who} (${group}). ${hint}`;
