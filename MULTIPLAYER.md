@@ -247,3 +247,10 @@ combinations, kicks, side spin (the engine has none).
   becomes theirs, the cookie is cleared, the match lists under their account.
 - Anyone else gets 404 on `/play/m/:id`; through the invite link they only ever watch.
 - Matches live in the `Matches` table (SQLite on the data volume), so they survive a restart/deploy.
+
+## Challenges need a registered name
+
+`POST /api/play/challenges` asks auth (`GET /api/auth/internal/users/exists`, `x-internal-secret`)
+whether the name is an active account: unknown -> 404 `NO_SUCH_PLAYER`; auth unreachable or no
+`INTERNAL_SECRET` -> 503 `LOOKUP_UNAVAILABLE` (fail closed); more than 10 unknown names in 10
+minutes per user -> 429. Challenges created before this check are left as they are.

@@ -18,6 +18,9 @@ const { createPlay, sanitizeGuestName } = require('../server/multiplayer/service
 const { loadEngines } = require('../server/multiplayer/engines');
 
 let server, base, models, clock, enginesP, tmp;
+let lookupDown = false;
+const lookups = [];
+const GHOSTS = /^(zz_|ghost)/i;   // names the stub auth does not know; every other name is a registered player
 const T0 = Date.parse('2026-11-06T12:00:00Z');
 
 before(async () => {
@@ -30,7 +33,8 @@ before(async () => {
   fs.writeFileSync(path.join(tmp, 'index.html'), '<!doctype html><title>SPA</title>');
   const play = createPlay({
     getModels: () => models, getEngines: () => enginesP, indexFile: path.join(tmp, 'index.html'),
-    now: () => clock, limits: { moveMax: 6, moveWindowMs: 10000, heartbeatMs: 200 },
+    now: () => clock, limits: { moveMax: 6, moveWindowMs: 10000, heartbeatMs: 200, lookupFailMax: 4 },
+    userExists: async name => { if (lookupDown) throw new Error('auth down'); return !GHOSTS.test(name) && lookups.push(name) > 0; },
   });
   const app = express();
   app.use(express.json());
@@ -243,23 +247,43 @@ test('challenge flow: incoming list, accept, decline, cancel, and nobody else ca
   assert.strictEqual((await call('GET', '/api/play/matches', { user: 'dana' })).json.incoming.length, 0);
 });
 
-test('challenge probe-resistance: a name nobody holds looks exactly like one somebody does', async () => {
-  await call('POST', '/api/play/invites', { user: 'erin', body: { type: 'chess' } }); // erin exists in the estate; the server never checks
-  const real = await call('POST', '/api/play/challenges', { user: 'frank', body: { type: 'chess', opponent: 'erin', color: 'white' } });
+test('a challenge to an unregistered name is refused with 404; a registered name is accepted case-insensitively', async () => {
   const ghost = await call('POST', '/api/play/challenges', { user: 'frank', body: { type: 'chess', opponent: 'zz_nobody_here', color: 'white' } });
-  assert.strictEqual(real.status, ghost.status);
-  assert.deepStrictEqual(Object.keys(real.json).sort(), Object.keys(ghost.json).sort());
-  assert.strictEqual(real.json.status, ghost.json.status);
-  const list = (await call('GET', '/api/play/matches', { user: 'frank' })).json.matches.filter(m => m.status === 'challenge');
-  const shapes = list.map(m => JSON.stringify(Object.keys(m).sort()));
-  assert.strictEqual(new Set(shapes).size, 1, 'both pending entries have the same shape');
-  // the match page for the ghost challenge is the same as for the real one
-  const [a, b] = await Promise.all([real, ghost].map(r => call('GET', `/play/m/${r.json.id}/state`, { user: 'frank' })));
-  assert.deepStrictEqual(Object.keys(a.json).sort(), Object.keys(b.json).sort());
-  // bad usernames are a format error that says nothing about existence
-  assert.strictEqual((await call('POST', '/api/play/challenges', { user: 'frank', body: { type: 'chess', opponent: '<x>' } })).status, 400);
-  assert.strictEqual((await call('POST', '/api/play/challenges', { user: 'frank', body: { type: 'chess', opponent: 'Frank' } })).status, 400);
-  assert.strictEqual((await call('POST', '/api/play/challenges', { user: 'frank', body: { type: 'nope', opponent: 'erin' } })).status, 400);
+  assert.strictEqual(ghost.status, 404);
+  assert.deepStrictEqual(ghost.json, { error: 'NO_SUCH_PLAYER', message: 'No player with that username.' });
+  const real = await call('POST', '/api/play/challenges', { user: 'frank', body: { type: 'chess', opponent: 'ErIn', color: 'white' } });
+  assert.strictEqual(real.status, 201);
+  assert.ok(lookups.includes('ErIn'));
+  const mine = (await call('GET', '/api/play/matches', { user: 'frank' })).json.matches;
+  assert.ok(!mine.some(m => m.opponent === 'zz_nobody_here'), 'no row was written for the ghost');
+});
+
+test('challenging yourself is refused before any lookup', async () => {
+  const before = lookups.length;
+  assert.strictEqual((await call('POST', '/api/play/challenges', { user: 'frank', body: { type: 'chess', opponent: 'FRANK' } })).status, 400);
+  assert.strictEqual(lookups.length, before);
+});
+
+test('if auth cannot be asked, the challenge is refused (fail closed) and nothing is written', async () => {
+  lookupDown = true;
+  try {
+    const r = await call('POST', '/api/play/challenges', { user: 'kim', body: { type: 'chess', opponent: 'erin' } });
+    assert.strictEqual(r.status, 503);
+    assert.strictEqual(r.json.error, 'LOOKUP_UNAVAILABLE');
+  } finally { lookupDown = false; }
+  assert.strictEqual((await call('GET', '/api/play/matches', { user: 'kim' })).json.matches.length, 0);
+});
+
+test('failed lookups are rate limited per user, and successes do not count', async () => {
+  for (let i = 0; i < 4; i++) assert.strictEqual((await call('POST', '/api/play/challenges', { user: 'lou', body: { type: 'chess', opponent: 'zz_' + i } })).status, 404);
+  const blocked = await call('POST', '/api/play/challenges', { user: 'lou', body: { type: 'chess', opponent: 'zz_again' } });
+  assert.strictEqual(blocked.status, 429);
+  assert.strictEqual(blocked.json.error, 'TOO_MANY_LOOKUPS');
+  // another user is unaffected; a limited user stays blocked even for real names until the window passes
+  assert.strictEqual((await call('POST', '/api/play/challenges', { user: 'max', body: { type: 'chess', opponent: 'zz_x' } })).status, 404);
+  assert.strictEqual((await call('POST', '/api/play/challenges', { user: 'lou', body: { type: 'chess', opponent: 'erin' } })).status, 429);
+  clock += 11 * 60 * 1000;
+  assert.strictEqual((await call('POST', '/api/play/challenges', { user: 'lou', body: { type: 'chess', opponent: 'erin' } })).status, 201);
 });
 
 test('limits: pending challenges per target, and 20 open matches per user', async () => {

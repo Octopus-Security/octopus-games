@@ -25,6 +25,7 @@ const DEFAULT_LIMITS = {
   sseMaxPerMatch: 40,
   heartbeatMs: 25000,
   cookieMaxAgeS: 30 * 24 * 3600,
+  lookupFailMax: 10, lookupFailWindowMs: 10 * 60 * 1000,   // unknown-name / failed lookups per user
 };
 const SEAT_COOKIE = 'octopus_seat';
 const LIVE = ['challenge', 'open', 'active'];
@@ -61,7 +62,7 @@ function cookieValue(req, name) {
 
 const asyncH = fn => (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next);
 
-function createPlay({ getModels, getEngines, indexFile, now = Date.now, limits = {} }) {
+function createPlay({ getModels, getEngines, indexFile, now = Date.now, limits = {}, userExists = null }) {
   const L = { ...DEFAULT_LIMITS, ...limits };
   const models = () => getModels();
   const date = () => new Date(now());
@@ -104,6 +105,7 @@ function createPlay({ getModels, getEngines, indexFile, now = Date.now, limits =
   }
 
   // ── per-seat move rate limit ────────────────────────────────────────────────
+  const lookupFails = new Map(); // lower-cased username -> timestamps of failed lookups
   const moveTimes = new Map();
   function moveAllowed(matchId, seat) {
     const key = `${matchId}:${seat}`;
@@ -402,6 +404,22 @@ function createPlay({ getModels, getEngines, indexFile, now = Date.now, limits =
     if (lc(target) === lc(req.user.username)) return res.status(400).json({ error: 'SELF_CHALLENGE' });
     const c = await parseCreate(req, res);
     if (!c) return;
+    // The name must belong to a registered account. This answers exists / doesn't and
+    // nothing more, and failed lookups are rate limited so it is not an enumeration oracle.
+    // If the lookup cannot be made the challenge is refused (fail closed), never allowed.
+    const who = lc(req.user.username);
+    const fails = (lookupFails.get(who) || []).filter(t => now() - t < L.lookupFailWindowMs);
+    lookupFails.set(who, fails);
+    if (fails.length >= L.lookupFailMax) return res.status(429).json({ error: 'TOO_MANY_LOOKUPS', message: 'Too many names that are not players. Try again in a few minutes.' });
+    let found;
+    try { found = typeof userExists === 'function' ? await userExists(target) : null; } catch { found = null; }
+    if (found === null || found === undefined) {
+      return res.status(503).json({ error: 'LOOKUP_UNAVAILABLE', message: 'Could not check that username right now. Try again in a moment.' });
+    }
+    if (!found) {
+      fails.push(now());
+      return res.status(404).json({ error: 'NO_SUCH_PLAYER', message: 'No player with that username.' });
+    }
     const { Match } = models();
     const pending = await Match.count({ where: { status: 'challenge', createdBy: req.user.username, [Op.or]: [{ seat0Key: lc(target) }, { seat1Key: lc(target) }] } });
     if (pending >= L.pendingPerTarget) return res.status(429).json({ error: 'TOO_MANY_PENDING' });
