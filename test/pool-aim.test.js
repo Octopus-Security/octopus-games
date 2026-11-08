@@ -55,3 +55,22 @@ test('arrow keys step the angle, shift is coarser, and it wraps', () => {
   const w = A.stepAngle(Math.PI - 1e-6, 1, true);
   assert.ok(w > -Math.PI && w < -Math.PI + 0.1);
 });
+
+test('space-charge cycle: phase boundaries, pauses, wrap, cancel at 0', () => {
+  const { SWEEP_MS: S, PAUSE_MS: P, CYCLE_MS: C, powerFromCycle: f } = A;
+  assert.equal(f(0), 0);
+  assert.equal(f(S / 2), 0.5);
+  assert.equal(f(S), 1);
+  assert.equal(f(S + P / 2), 1);            // holds at the top
+  assert.equal(f(S + P), 1);
+  assert.equal(f(S + P + S / 2), 0.5);      // falling
+  assert.equal(f(2 * S + P), 0);
+  assert.equal(f(2 * S + P + P / 2), 0);    // holds at the bottom
+  assert.equal(f(C), 0);                    // wraps
+  assert.equal(f(C + S / 2), 0.5);
+  assert.equal(f(3 * C + S), 1);
+  assert.equal(f(-5), 0);
+  assert.equal(f(NaN), 0);
+  assert.equal(A.isShot(f(2 * S + P + 10)), false); // release in the 0 pause cancels
+  assert.equal(A.isShot(f(S / 2)), true);
+});

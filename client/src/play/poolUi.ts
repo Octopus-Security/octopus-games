@@ -4,7 +4,7 @@
 // both look and behave the same. It knows nothing about who the players are beyond the
 // names it is given.
 import { groupOf } from '../../../shared/pool/index.js';
-import { powerFromDrag, powerFromHold, isShot } from '../../../shared/pool/aim.js';
+import { powerFromDrag, powerFromCycle, isShot } from '../../../shared/pool/aim.js';
 import { PoolBoard, ballColor, REASONS, FOULS, type PoolViewState, type PoolMove } from '../games/pool/PoolView';
 import { h } from './dom';
 import type { Banner, GameScreen, PlayerCard } from './gameScreen';
@@ -45,7 +45,7 @@ function chip(id: number): HTMLElement {
   return el;
 }
 
-const DEFAULT_HINT = 'Touch the table to aim (arrow keys fine-tune), then pull back the power control and let go to shoot. Hold Space to charge.';
+const DEFAULT_HINT = 'Touch the table to aim (arrow keys fine-tune), then pull the power bar down and let go to shoot. Or hold Space: power rises, pauses, falls; release to shoot (at 0 = no shot).';
 const SOLIDS = [1, 2, 3, 4, 5, 6, 7];
 const STRIPES = [9, 10, 11, 12, 13, 14, 15];
 
@@ -120,7 +120,7 @@ function playerCard(v: PoolViewState, o: PoolPanelOpts, seat: number): PlayerCar
 
 export function mountPool(screen: GameScreen, opts: PoolPanelOpts): PoolPanel {
   const host = h('div', '');
-  host.style.cssText = 'position:absolute;inset:0;';
+  host.className = 'g-pool-host';
   screen.stage.replaceChildren(host);
 
   // draw / follow, kept big enough to use with a thumb
@@ -146,7 +146,20 @@ export function mountPool(screen: GameScreen, opts: PoolPanelOpts): PoolPanel {
   power.setAttribute('aria-valuemax', '100');
   power.setAttribute('aria-valuenow', '0');
   power.style.touchAction = 'none';
-  screen.tools.replaceChildren(spinBox, power, left, hintEl);
+  const keyHint = h('span', 'g-keyhint', 'Space: hold to charge (release to shoot)');
+  screen.tools.replaceChildren(spinBox, power, left, keyHint, hintEl);
+  // Wide screens: dock the power control beside the table as a vertical pull-down bar, inside
+  // the stage so it can never be pushed off-screen. Phones keep it in the bar under the table.
+  const wide = window.matchMedia('(min-width: 600px)');
+  const dock = (): void => {
+    if (wide.matches) { power.classList.add('g-power--docked'); screen.stage.append(power); readout.textContent = 'Pull down to shoot'; }
+    else { power.classList.remove('g-power--docked'); screen.tools.insertBefore(power, left); readout.textContent = 'Pull back to shoot'; }
+    idleText = readout.textContent || '';
+  };
+  let idleText = '';
+
+  dock();
+  wide.addEventListener('change', dock);
 
   let view: PoolViewState | null = null;
   let toastedShot = -1;
@@ -165,10 +178,10 @@ export function mountPool(screen: GameScreen, opts: PoolPanelOpts): PoolPanel {
   let spaceFrom = 0, spaceRaf = 0;
   const showPower = (p: number): void => {
     const pct = Math.round(p * 100);
-    fill.style.width = `${pct}%`;
+    fill.style.setProperty('--p', `${pct}%`);
     fill.style.background = `hsl(${120 - 120 * p}, 75%, 50%)`;
     power.setAttribute('aria-valuenow', String(pct));
-    readout.textContent = p > 0 ? `${pct}%` : 'Pull back to shoot';
+    readout.textContent = p > 0 ? `${pct}%` : idleText;
     board.setPower(p);
   };
   const endCharge = (shoot: boolean, p: number): void => {
@@ -217,7 +230,7 @@ export function mountPool(screen: GameScreen, opts: PoolPanelOpts): PoolPanel {
       power.classList.add('is-active');
       const tick = (): void => {
         if (!spaceFrom) return;
-        showPower(powerFromHold(performance.now() - spaceFrom));
+        showPower(powerFromCycle(performance.now() - spaceFrom));
         spaceRaf = window.requestAnimationFrame(tick);
       };
       tick();
@@ -228,7 +241,7 @@ export function mountPool(screen: GameScreen, opts: PoolPanelOpts): PoolPanel {
   const onKeyUp = (e: KeyboardEvent): void => {
     if (!spaceFrom || (e.key !== ' ' && e.code !== 'Space')) return;
     e.preventDefault();
-    endCharge(true, powerFromHold(performance.now() - spaceFrom));
+    endCharge(true, powerFromCycle(performance.now() - spaceFrom));
   };
   document.addEventListener('keydown', onKeyDown);
   document.addEventListener('keyup', onKeyUp);
@@ -284,6 +297,7 @@ export function mountPool(screen: GameScreen, opts: PoolPanelOpts): PoolPanel {
     destroy() {
       window.clearInterval(idleTimer);
       window.cancelAnimationFrame(spaceRaf);
+      wide.removeEventListener('change', dock);
       document.removeEventListener('keydown', onKeyDown);
       document.removeEventListener('keyup', onKeyUp);
       board.destroy();
