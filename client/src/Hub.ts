@@ -8,6 +8,7 @@ import { launchSudoku } from './games/sudoku/index';
 import { launchBlackjack } from './games/blackjack/index';
 import { launchFrogger } from './games/frogger/index';
 import { launchGalaga } from './games/galaga/index';
+import { launchSnake } from './games/snake/index';
 import { showIconWhileHubHidden } from './gameIcons';
 
 const ADMIN_USERNAME = 'psychopathy';
@@ -98,6 +99,15 @@ const GAMES: GameDef[] = [
     category: 'Arcade',
     available: true,
     launch: launchGalaga,
+  },
+  {
+    slug: 'snake',
+    title: 'Snake',
+    description: 'Eat, grow and don\'t crash. The snake speeds up as it gets longer.',
+    emoji: '🐍',
+    category: 'Arcade',
+    available: true,
+    launch: launchSnake,
   },
 ];
 
