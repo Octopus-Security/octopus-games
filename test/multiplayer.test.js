@@ -61,8 +61,8 @@ async function invite(user, color = 'white') {
   return { id: r.json.id, tok: r.json.invite.path.split('/').pop() };
 }
 /** alice (white) vs a guest, through a link. */
-async function guestGame(name = 'Guesty') {
-  const { id, tok } = await invite('alice');
+async function guestGame(name = 'Guesty', host = 'alice') {
+  const { id, tok } = await invite(host);
   const claim = await call('POST', `/play/i/${tok}/claim`, { body: { name } });
   assert.strictEqual(claim.status, 200);
   return { id, tok, gc: cookieOf(claim), claim };
@@ -415,4 +415,72 @@ test('pool: a variant is validated, stored in the state and shown in the view; 8
   const seen = await call('GET', `/play/m/${r.json.id}/state`, gc);
   assert.strictEqual(seen.json.view.shots, 1);
   assert.deepStrictEqual(seen.json.view.lastShot.tracks.length, 16);
+});
+
+// ── resumable seats: return to a match, on another device, as a stranger ─────
+test('a signed-in seat follows the account: any device, no cookie, case-insensitive', async () => {
+  const g = await guestGame('Roamer', 'rita');
+  const phone = await call('GET', `/play/m/${g.id}/state`, { user: 'Rita' }); // no cookie at all
+  assert.strictEqual(phone.status, 200);
+  assert.strictEqual(phone.json.you.seat, 0);
+  assert.strictEqual(phone.json.you.role, 'player');
+  assert.strictEqual((await call('GET', `/play/m/${g.id}`, { user: 'rita' })).status, 200);
+  // returning through her own invite link sends her to her seat, not a claim
+  const info = await call('GET', `/play/i/${g.tok}/info`, { user: 'rita' });
+  assert.deepStrictEqual(info.json.you, { seat: 0 });
+  assert.strictEqual(info.json.matchId, g.id);
+});
+
+test('a guest returns with the same cookie; a different browser (no cookie) cannot take the seat', async () => {
+  const g = await guestGame('Homebody', 'hank');
+  const back = await call('GET', `/play/m/${g.id}/state`, { cookie: g.gc });
+  assert.strictEqual(back.json.you.seat, 1);
+  assert.strictEqual(back.json.you.kind, 'guest');
+  assert.strictEqual((await call('GET', `/play/m/${g.id}/state`)).status, 404);
+  assert.strictEqual((await call('GET', `/play/m/${g.id}/state`, { cookie: 'octopus_seat=' + 'x'.repeat(32) })).status, 404);
+});
+
+test('a third person with the link watches; they never get a seat, and cannot move', async () => {
+  const g = await guestGame('Seated', 'sam');
+  const claim = await call('POST', `/play/i/${g.tok}/claim`, { user: 'eve' });
+  assert.strictEqual(claim.json.role, 'spectator');
+  const watch = await call('GET', `/play/i/${g.tok}/state`, { user: 'eve' });
+  assert.strictEqual(watch.json.you.seat, null);
+  assert.strictEqual((await call('GET', `/play/m/${g.id}/state`, { user: 'eve' })).status, 404);
+  assert.strictEqual((await move(g.id, { user: 'eve' }, 1, 'e2', 'e4')).status, 404);
+});
+
+test('"Your matches" is owner-scoped: bob never sees alice\'s games, a guest game appears for its creator', async () => {
+  const g = await guestGame('Scoped', 'ann');
+  const a = (await call('GET', '/api/play/matches', { user: 'ann' })).json;
+  const b = (await call('GET', '/api/play/matches', { user: 'bob' })).json;
+  const row = a.matches.find(m => m.id === g.id);
+  assert.ok(row, 'creator lists the match');
+  assert.strictEqual(row.opponent, 'Scoped');
+  assert.strictEqual(row.status, 'active');
+  assert.strictEqual(typeof row.yourTurn, 'boolean');
+  assert.ok(![...b.matches, ...b.incoming].some(m => m.id === g.id));
+  const inv = await invite('ann');
+  const waiting = (await call('GET', '/api/play/matches', { user: 'ann' })).json.matches.find(m => m.id === inv.id);
+  assert.strictEqual(waiting.status, 'open');
+  assert.ok(waiting.invite.path.endsWith(inv.tok));
+  assert.ok(!(await call('GET', '/api/play/matches', { user: 'bob' })).json.matches.some(m => m.id === inv.id));
+});
+
+test('a guest who signs in adopts the seat: listed, playable from any device, cookie dead', async () => {
+  const g = await guestGame('Newcomer', 'nina');
+  assert.strictEqual((await call('POST', `/play/m/${g.id}/adopt`, { cookie: g.gc })).status, 401); // not signed in
+  assert.strictEqual((await call('POST', `/play/m/${g.id}/adopt`, { user: 'zed' })).status, 404);  // signed in, no seat proof
+  assert.strictEqual((await call('POST', `/play/m/${g.id}/adopt`, { user: 'nina', cookie: g.gc })).status, 409); // she is already the other player
+  const ok = await call('POST', `/play/m/${g.id}/adopt`, { user: 'Zed', cookie: g.gc });
+  assert.strictEqual(ok.status, 200, JSON.stringify(ok.json));
+  assert.strictEqual(ok.json.you.kind, 'user');
+  assert.strictEqual(ok.json.you.seat, 1);
+  assert.ok(ok.setCookie.some(c => /Max-Age=0/.test(c)));
+  assert.ok((await call('GET', '/api/play/matches', { user: 'zed' })).json.matches.some(m => m.id === g.id));
+  assert.strictEqual((await call('GET', `/play/m/${g.id}/state`, { user: 'zed' })).json.you.seat, 1);
+  assert.strictEqual((await call('GET', `/play/m/${g.id}/state`, { cookie: g.gc })).status, 404); // old secret is dead
+  const w = await move(g.id, { user: 'nina' }, ok.json.version, 'e2', 'e4');
+  assert.strictEqual(w.status, 200);
+  assert.strictEqual((await call('POST', `/play/m/${g.id}/adopt`, { user: 'mallory', cookie: g.gc })).status, 404);
 });

@@ -320,6 +320,29 @@ function createPlay({ getModels, getEngines, indexFile, now = Date.now, limits =
     res.json({ matchId: m.id, role: 'player', seat: free });
   }));
 
+  // A guest who signs in later moves their seat into their account, so the match
+  // lists under "Your matches" and opens from any device. Needs BOTH proofs: the
+  // seat cookie (they hold the seat) and a signed-in session (who gets it).
+  guestRouter.post('/m/:id/adopt', asyncH(async (req, res) => {
+    const r = await seatMatch(req, res);
+    if (!r) return;
+    const { m, actor } = r;
+    if (!req.user || !req.user.username) return res.status(401).json({ error: 'NOT_AUTHENTICATED' });
+    if (actor.kind !== 'guest') return res.status(409).json({ error: 'NOT_GUEST' });
+    const key = lc(req.user.username), other = 1 - actor.seat;
+    if (m[`seat${other}Kind`] === 'user' && m[`seat${other}Key`] === key) return res.status(409).json({ error: 'SAME_USER' });
+    if (LIVE.includes(m.status) && await openCount(req.user.username, key) >= L.openPerUser) return res.status(429).json({ error: 'TOO_MANY_MATCHES' });
+    const [n] = await models().Match.update({
+      [`seat${actor.seat}Kind`]: 'user', [`seat${actor.seat}Name`]: req.user.username,
+      [`seat${actor.seat}Key`]: key, [`seat${actor.seat}TokenHash`]: null, version: m.version + 1,
+    }, { where: { id: m.id, version: m.version, [`seat${actor.seat}TokenHash`]: sha(actor.token) } });
+    await m.reload();
+    if (!n) return res.status(409).json({ error: 'STALE' });
+    res.append('Set-Cookie', `${SEAT_COOKIE}=; Path=/play/m/${m.id}; Max-Age=0; HttpOnly; Secure; SameSite=Lax`);
+    broadcast(m);
+    res.json(await present(m, actorFor(req, m), req));
+  }));
+
   guestRouter.use(errorHandler);
 
   // ═══ signed-in routes ═══════════════════════════════════════════════════════
