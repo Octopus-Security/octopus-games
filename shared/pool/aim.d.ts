@@ -9,3 +9,7 @@ export function powerFromDrag(dx: number, dy: number, full?: number): number;
 export function powerFromHold(ms: number): number;
 export function isShot(power: number): boolean;
 export function stepAngle(angle: number, dir: number, coarse?: boolean): number;
+export const SWEEP_MS: number;
+export const PAUSE_MS: number;
+export const CYCLE_MS: number;
+export function powerFromCycle(ms: number): number;

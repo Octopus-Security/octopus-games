@@ -9,6 +9,10 @@ export const MIN_POWER = 0.03;
 export const AIM_DEADZONE = 2;
 /** Space held this long (ms) reaches full power. */
 export const CHARGE_MS = 1600;
+/** Space-charge cycle: rise 0 to 1 over SWEEP_MS, hold at 1 for PAUSE_MS, fall back over SWEEP_MS, hold at 0 for PAUSE_MS, repeat. */
+export const SWEEP_MS = 1200;
+export const PAUSE_MS = 1000;
+export const CYCLE_MS = 2 * (SWEEP_MS + PAUSE_MS);
 export const FINE_STEP = Math.PI / 360; // 0.5 degree
 export const COARSE_STEP = Math.PI / 60; // 3 degrees
 
@@ -34,6 +38,20 @@ export function powerFromDrag(dx, dy, full = FULL_PULL_PX) {
 export function powerFromHold(ms) {
   const p = Math.min(1, Math.max(0, ms) / CHARGE_MS);
   return p < MIN_POWER ? 0 : p;
+}
+
+/**
+ * Power 0..1 after holding Space for ms milliseconds, oscillating (see SWEEP_MS, PAUSE_MS).
+ * Pure function of elapsed time; wraps every CYCLE_MS. Not thresholded: pass the result to
+ * isShot, which treats ~0 (the start, or the pause at the bottom) as a cancel.
+ */
+export function powerFromCycle(ms) {
+  if (!Number.isFinite(ms) || ms < 0) return 0;
+  const t = ms % CYCLE_MS;
+  if (t < SWEEP_MS) return t / SWEEP_MS;
+  if (t < SWEEP_MS + PAUSE_MS) return 1;
+  if (t < 2 * SWEEP_MS + PAUSE_MS) return 1 - (t - SWEEP_MS - PAUSE_MS) / SWEEP_MS;
+  return 0;
 }
 
 /** A power below the threshold, or non-finite, is a cancel. */

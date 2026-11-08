@@ -151,16 +151,31 @@ input, select, textarea { font-size: 16px; }
 .g-top { grid-area: top; } .g-bot { grid-area: bot; } .g-banner { grid-area: banner; }
 .g-tools { grid-area: tools; } .g-side { grid-area: side; }
 
-/* pool: players either side of the banner, the table takes everything else */
+/* pool: players either side of the banner. The table is a box with the table's own aspect
+   ratio (2156:1156, rails included) that takes the full width and shrinks in height when the
+   screen is short; the block of players + table + tools is centred as a whole, so a tall or
+   wide window never leaves a gap above the table or pushes the tools off-screen. Phones in
+   portrait keep the old 1fr stage (the table is turned upright there and fills it). */
 .g-play[data-kind="pool"] {
   grid-template-columns: minmax(0, 1fr) minmax(0, 38rem) minmax(0, 1fr);
-  grid-template-rows: auto minmax(0, 1fr) auto;
+  grid-template-rows: auto minmax(0, auto) auto;
   grid-template-areas: "top banner bot" "stage stage stage" "tools tools tools";
+  align-content: center; align-items: start;
 }
-.g-play[data-kind="pool"] .g-stage-in { display: block; }
+.g-play[data-kind="pool"] .g-stage { container-type: normal; width: 100%; aspect-ratio: 2156 / 1156; align-self: stretch; }
+.g-play[data-kind="pool"] .g-stage-in { display: flex; align-items: stretch; justify-content: center; gap: 8px; }
+.g-pool-host { position: absolute; inset: 0; }
+@media (min-width: 600px) {
+  /* beside its power bar, as wide as the stage allows but never taller than it */
+  .g-pool-host { position: relative; inset: auto; flex: 0 1 auto; height: 100%; aspect-ratio: 2156 / 1156; max-width: calc(100% - 72px); min-width: 0; }
+}
 .g-play[data-kind="pool"] .g-side { display: none; }
 @media (max-width: 899px) {
-  .g-play[data-kind="pool"] { grid-template-columns: 1fr 1fr; grid-template-rows: auto auto minmax(0, 1fr) auto; grid-template-areas: "banner banner" "top bot" "stage stage" "tools tools"; gap: 8px; }
+  .g-play[data-kind="pool"] { grid-template-columns: 1fr 1fr; grid-template-rows: auto auto minmax(0, auto) auto; grid-template-areas: "banner banner" "top bot" "stage stage" "tools tools"; gap: 8px; }
+}
+@media (max-width: 599px) {
+  .g-play[data-kind="pool"] { grid-template-rows: auto auto minmax(0, 1fr) auto; align-content: stretch; }
+  .g-play[data-kind="pool"] .g-stage { aspect-ratio: auto; container-type: size; }
 }
 
 /* chess: board left, everything else in a side panel; on a phone it stacks */
@@ -256,9 +271,15 @@ input, select, textarea { font-size: 16px; }
 .g-power[aria-disabled="true"] { opacity: 0.5; cursor: not-allowed; }
 .g-power.is-active { cursor: grabbing; border-color: var(--o-accent); }
 .g-power:focus-visible { outline: 2px solid var(--o-accent); outline-offset: 2px; }
-.g-power-fill { position: absolute; right: 0; top: 0; bottom: 0; width: 0; background: #3ecf6e; opacity: 0.55; pointer-events: none; }
+.g-power-fill { position: absolute; right: 0; top: 0; bottom: 0; width: var(--p, 0%); background: #3ecf6e; opacity: 0.55; pointer-events: none; }
 .g-power-read { position: relative; font-size: 0.9375rem; font-weight: 700; color: var(--o-text, inherit); pointer-events: none; font-variant-numeric: tabular-nums; }
 .g-hint { font-size: 0.875rem; color: var(--o-dim); }
+.g-keyhint { display: none; font-size: 0.8125rem; color: var(--o-dim); white-space: nowrap; }
+@media (hover: hover) and (pointer: fine) { .g-keyhint { display: inline; } }
+/* docked beside the table: a vertical pull-down bar, always inside the stage */
+.g-power--docked { flex: 0 0 64px; width: 64px; min-width: 64px; min-height: 120px; align-self: stretch; flex-direction: column; }
+.g-power--docked .g-power-fill { left: 0; right: 0; top: 0; bottom: auto; width: 100%; height: var(--p, 0%); }
+.g-power--docked .g-power-read { writing-mode: vertical-rl; text-orientation: mixed; font-size: 0.8125rem; text-align: center; }
 .g-table-left { display: inline-flex; align-items: center; gap: 6px; min-height: 44px; padding: 0 14px; border-radius: 14px; background: var(--o-surface); border: 1px solid var(--o-border); font-size: 0.9375rem; color: var(--o-muted); font-weight: 600; }
 @media (max-width: 899px) { .g-hint { display: none; } }
 @media (max-width: 520px) {
