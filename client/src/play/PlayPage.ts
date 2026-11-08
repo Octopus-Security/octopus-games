@@ -38,7 +38,7 @@ export function renderPlay(route: PlayRoute, user: User | null): HTMLElement {
   const el = h('div', 'min-h-screen');
   page(el, h('p', 'text-center text-gray-500', 'Loading…'));
   if (route.kind === 'i') void inviteFlow(el, route.token, user);
-  else void matchFlow(el, `/play/m/${route.id}`, route.id);
+  else void matchFlow(el, `/play/m/${route.id}`, route.id, user);
   return el;
 }
 
@@ -63,7 +63,7 @@ async function inviteFlow(body: HTMLElement, token: string, user: User | null): 
   if (d.you && d.matchId) { location.replace(`/play/m/${d.matchId}`); return; }
   if (d.status === 'expired') { notice(body, 'This invite has expired', 'Ask the sender for a new link.'); return; }
   if (!d.seatOpen) {
-    await matchFlow(body, `/play/i/${token}`, null);
+    await matchFlow(body, `/play/i/${token}`, null, user);
     return;
   }
 
@@ -79,7 +79,7 @@ async function inviteFlow(body: HTMLElement, token: string, user: User | null): 
       try { localStorage.setItem(rememberKey(token), r.data.matchId); } catch { /* ignore */ }
       location.replace(`/play/m/${r.data.matchId}`);
     } else {
-      await matchFlow(body, `/play/i/${token}`, null); // someone else got there first: watch
+      await matchFlow(body, `/play/i/${token}`, null, user); // someone else got there first: watch
     }
   };
   if (user) {
@@ -100,7 +100,7 @@ async function inviteFlow(body: HTMLElement, token: string, user: User | null): 
 }
 
 // ── a match ───────────────────────────────────────────────────────────────────
-async function matchFlow(host: HTMLElement, base: string, matchId: string | null): Promise<void> {
+async function matchFlow(host: HTMLElement, base: string, matchId: string | null, user: User | null = null): Promise<void> {
   let current: MatchState | null = null;
   let es: EventSource | null = null;
   let pollTimer: number | undefined;
@@ -166,6 +166,20 @@ async function matchFlow(host: HTMLElement, base: string, matchId: string | null
         await api('POST', `/api/play/matches/${m.id}/revoke-invite`);
         current = null; await refresh();
       }));
+    }
+    // A guest seat lives in this browser only. Say so, and offer the account route.
+    if (m.you.kind === 'guest' && m.you.seat !== null && (m.status === 'active' || m.status === 'open')) {
+      if (user) {
+        bar.push(h('span', 'g-notice-text', `You joined as a guest. Add this game to ${user.username}'s account to resume it anywhere.`),
+          button('Add to my games', BTN_PRIMARY, async () => {
+            const r = await api('POST', `/play/m/${m.id}/adopt`);
+            if (r.ok) { current = null; await refresh(); }
+            else bar[0].textContent = r.error === 'SAME_USER' ? 'You are already the other player in this game.' : 'Could not add it. Try again.';
+          }));
+      } else {
+        bar.push(h('span', 'g-notice-text', 'Playing as a guest: this game only resumes in this browser.'),
+          button('Sign in to keep it', BTN_QUIET, () => goToLogin(false)));
+      }
     }
     sc.notice.replaceChildren(...bar);
     ui(sc, { match: m, send });

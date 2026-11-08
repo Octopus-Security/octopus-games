@@ -46,6 +46,9 @@ export const lobbyMessage = (r: ApiResult<unknown>): string => {
     case 'BAD_USERNAME': return 'Usernames use letters, numbers, dot, dash and underscore.';
     case 'SELF_CHALLENGE': return 'You cannot challenge yourself.';
     case 'NOT_AUTHENTICATED': return 'Sign in first.';
+    case 'NO_SUCH_PLAYER': return 'No player with that username.';
+    case 'LOOKUP_UNAVAILABLE': return 'Could not check that username right now. Try again in a moment.';
+    case 'TOO_MANY_LOOKUPS': return 'Too many names that are not players. Try again in a few minutes.';
     case 'NETWORK': return 'Could not reach the server.';
     default: return r.message || 'Something went wrong.';
   }

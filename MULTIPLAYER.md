@@ -236,3 +236,21 @@ positions; the 8 is called. The chosen shot gets a level-dependent aim and power
 Easy: 8 simulations, large error, random among the best few. Medium: 30, moderate. Hard: 70,
 small error. Each is also capped by wall-clock (0.5 / 1.2 / 1.8 s). Not modelled: bank shots,
 combinations, kicks, side spin (the engine has none).
+
+## Resuming a match (seat identity)
+
+- Signed in: a seat is the lower-cased username, so any device returns to it with full state;
+  `GET /api/play/matches` ("Your matches" on the Play tab) lists it, scoped to the caller's seats.
+- Guest: an HttpOnly seat cookie scoped to `/play/m/<id>` (30 days, refreshed on each state read);
+  it resumes in that browser only. The match page says so and offers sign-in.
+- A guest who signs in can `POST /play/m/:id/adopt` (needs the seat cookie AND a session): the seat
+  becomes theirs, the cookie is cleared, the match lists under their account.
+- Anyone else gets 404 on `/play/m/:id`; through the invite link they only ever watch.
+- Matches live in the `Matches` table (SQLite on the data volume), so they survive a restart/deploy.
+
+## Challenges need a registered name
+
+`POST /api/play/challenges` asks auth (`GET /api/auth/internal/users/exists`, `x-internal-secret`)
+whether the name is an active account: unknown -> 404 `NO_SUCH_PLAYER`; auth unreachable or no
+`INTERNAL_SECRET` -> 503 `LOOKUP_UNAVAILABLE` (fail closed); more than 10 unknown names in 10
+minutes per user -> 429. Challenges created before this check are left as they are.

@@ -73,7 +73,19 @@ const ssoSession = createSSOMiddleware({
 // answers 404 otherwise. ssoSession runs here too so a signed-in player is
 // recognised as themselves; it never rejects.
 const enginesPromise = loadEngines();
+// Does this username belong to an active account? Asks auth (secret-only internal route).
+// true / false, or null when it cannot be answered: the caller refuses on null.
+async function userExists(username) {
+  if (!process.env.INTERNAL_SECRET) return null;
+  try {
+    const r = await axios.get(`${AUTH_INTERNAL_URL}/api/auth/internal/users/exists`, {
+      params: { username }, headers: { 'x-internal-secret': process.env.INTERNAL_SECRET }, timeout: 4000,
+    });
+    return typeof r.data?.exists === 'boolean' ? r.data.exists : null;
+  } catch { return null; }
+}
 const play = createPlay({
+  userExists,
   getModels: () => multiplayer,
   getEngines: () => enginesPromise,
   indexFile: path.join(__dirname, '../client/dist/index.html'),

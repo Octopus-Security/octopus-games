@@ -67,7 +67,7 @@ export function renderPlayHub(user: User | null): HTMLElement {
     const sideLocal = select(`cpuside-${def.type}`, def.type === 'chess' ? 'You play' : 'Who breaks', [['random', def.sides[0]], ['0', def.sides[1]], ['1', def.sides[2]]]);
     const level = select(`level-${def.type}`, 'Difficulty', [['easy', 'Easy'], ['medium', 'Medium'], ['hard', 'Hard']], 'medium');
     const input = h('input', 'g-field') as HTMLInputElement;
-    input.placeholder = 'Their username';
+    input.placeholder = "Their username (must be a registered player)";
     input.id = def.type === 'chess' ? 'challengeName' : 'challengeName-pool';
     input.autocomplete = 'off';
     input.setAttribute('aria-label', 'Username to challenge');
@@ -82,7 +82,7 @@ export function renderPlayHub(user: User | null): HTMLElement {
         const name = input.value.trim();
         if (!name) { msg.textContent = 'Type a username first.'; return; }
         const r = await api('POST', '/api/play/challenges', { type: def.type, opponent: name, color: sideOnline.el.value, ...variantBody() });
-        // Same wording whether or not that name exists: the server does not say.
+        // The server refuses names that are not registered players (NO_SUCH_PLAYER).
         msg.textContent = r.ok ? `Challenge sent to ${name}. It stays open for 7 days.` : lobbyMessage(r);
         if (r.ok) { input.value = ''; reloadLists.forEach(f => f()); }
       };
