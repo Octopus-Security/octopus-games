@@ -42,5 +42,6 @@ COPY server/ ./server/
 RUN rm -rf /usr/local/lib/node_modules/npm /usr/local/lib/node_modules/corepack \
            /usr/local/bin/npm /usr/local/bin/npx /usr/local/bin/corepack
 
+ENV NODE_ENV=production
 EXPOSE 3013
 CMD ["node", "server/index.js"]

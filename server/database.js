@@ -8,6 +8,23 @@ const sequelize = new Sequelize({
   logging: false,
 });
 
+// Sequelize's sqlite connection manager does NOT run the afterConnect hook, and
+// it opens a handle per transaction, so the pragmas are applied by wrapping
+// getConnection: once per connection, awaited before the first query uses it.
+// The db lives in the games_data volume DIRECTORY (/app/data), so the -wal/-shm
+// files sit in the volume and WAL is safe.
+const PRAGMAS = 'PRAGMA journal_mode=WAL; PRAGMA busy_timeout=5000; PRAGMA synchronous=NORMAL;';
+const cm = sequelize.connectionManager;
+const origGetConnection = cm.getConnection.bind(cm);
+cm.getConnection = async function getConnection(options) {
+  const conn = await origGetConnection(options);
+  if (!conn.__pragmas) {
+    conn.__pragmas = new Promise((resolve, reject) => conn.exec(PRAGMAS, err => (err ? reject(err) : resolve())));
+  }
+  await conn.__pragmas;
+  return conn;
+};
+
 const GameSave = sequelize.define('GameSave', {
   id: { type: DataTypes.INTEGER, primaryKey: true, autoIncrement: true },
   userId: { type: DataTypes.STRING, allowNull: false },
@@ -67,6 +84,15 @@ const multiplayer = {};
 async function initDb() {
   await sequelize.authenticate();
   await sequelize.sync({ alter: true });
+  // Owner/lookup indexes. Idempotent; sync() does not reliably add indexes to an
+  // existing table, so these are explicit.
+  for (const sql of [
+    'CREATE INDEX IF NOT EXISTS game_saves_user_game ON GameSaves (userId, gameSlug)',
+    'CREATE INDEX IF NOT EXISTS game_scores_game_score ON GameScores (gameSlug, score)',
+    'CREATE INDEX IF NOT EXISTS game_scores_user ON GameScores (userId)',
+    'CREATE INDEX IF NOT EXISTS game_controls_user ON GameControls (username)',
+    'CREATE INDEX IF NOT EXISTS crafting_goals_user ON CraftingGoals (username)',
+  ]) await sequelize.query(sql);
   Object.assign(multiplayer, defineMatchModels(sequelize));
   await multiplayer.Match.sync();
   await multiplayer.MatchMove.sync();
