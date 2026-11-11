@@ -46,7 +46,7 @@ function createAppGate({ authUrl, slug, upgradeUrl = '', appName = 'this app', f
     if (req.get('authorization')) headers.Authorization = req.get('authorization');
 
     try {
-      const res = await doFetch(`${authUrl}/api/auth/apps/${encodeURIComponent(slug)}/allowed`, { headers });
+      const res = await doFetch(`${authUrl}/api/auth/apps/${encodeURIComponent(slug)}/allowed`, { headers, signal: AbortSignal.timeout(5000) });
       if (res.status === 404) {
         console.warn(`[access] "${slug}" is not an app octopus-auth knows — the gate is doing nothing. Check hub-apps.json.`);
         return true;

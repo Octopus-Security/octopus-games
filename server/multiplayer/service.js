@@ -119,12 +119,32 @@ function createPlay({ getModels, getEngines, indexFile, now = Date.now, limits =
   }
 
   // ── lookups ─────────────────────────────────────────────────────────────────
-  async function expireStale() {
+  // Lapsed challenges and invites are flipped to 'expired' by a sweep. The sweep
+  // is throttled (reads used to run this UPDATE every time: a write transaction
+  // per GET), and every read ALSO checks expiresAt itself, so a lapsed match is
+  // never shown or acted on as live while it waits for the next sweep.
+  const SWEEP_MS = 30 * 1000;
+  let lastSweep = -Infinity;
+  async function expireStale({ force = false } = {}) {
+    const t = now();
+    if (!force && t - lastSweep < SWEEP_MS) return;
+    lastSweep = t;
     const { Match } = models();
     await Match.update({ status: 'expired' }, { where: { status: { [Op.in]: ['challenge', 'open'] }, expiresAt: { [Op.lt]: date() } } });
   }
-  const byId = async id => (ID_RE.test(String(id)) ? models().Match.findByPk(id) : null);
-  const byToken = async tok => (TOKEN_RE.test(String(tok)) ? models().Match.findOne({ where: { inviteToken: tok } }) : null);
+  const isLapsed = m => !!m && (m.status === 'challenge' || m.status === 'open') && !!m.expiresAt && new Date(m.expiresAt).getTime() < now();
+  const settle = m => { if (isLapsed(m)) m.status = 'expired'; return m; };
+  /** Where-fragment: not a lapsed challenge/invite (live statuses with no expiry are unaffected). */
+  const notLapsed = () => ({ [Op.or]: [{ expiresAt: null }, { expiresAt: { [Op.gte]: date() } }] });
+  let sweeper = null;
+  function startSweeper() {
+    if (sweeper) return;
+    sweeper = setInterval(() => { expireStale({ force: true }).catch(e => console.error('[play] sweep', e && e.message)); }, SWEEP_MS);
+    if (sweeper.unref) sweeper.unref();
+  }
+  const stopSweeper = () => { if (sweeper) { clearInterval(sweeper); sweeper = null; } };
+  const byId = async id => (ID_RE.test(String(id)) ? settle(await models().Match.findByPk(id)) : null);
+  const byToken = async tok => (TOKEN_RE.test(String(tok)) ? settle(await models().Match.findOne({ where: { inviteToken: tok } })) : null);
 
   function actorFor(req, m) {
     if (req.user && req.user.username) {
@@ -355,10 +375,10 @@ function createPlay({ getModels, getEngines, indexFile, now = Date.now, limits =
     const { Match } = models();
     return Match.count({ where: {
       status: { [Op.in]: LIVE },
-      [Op.or]: [
+      [Op.and]: [notLapsed(), { [Op.or]: [
         { createdBy: username },
         { status: 'active', [Op.or]: [{ seat0Key: key }, { seat1Key: key }] },
-      ],
+      ] }],
     } });
   }
 
@@ -421,7 +441,7 @@ function createPlay({ getModels, getEngines, indexFile, now = Date.now, limits =
       return res.status(404).json({ error: 'NO_SUCH_PLAYER', message: 'No player with that username.' });
     }
     const { Match } = models();
-    const pending = await Match.count({ where: { status: 'challenge', createdBy: req.user.username, [Op.or]: [{ seat0Key: lc(target) }, { seat1Key: lc(target) }] } });
+    const pending = await Match.count({ where: { status: 'challenge', createdBy: req.user.username, [Op.and]: [notLapsed(), { [Op.or]: [{ seat0Key: lc(target) }, { seat1Key: lc(target) }] }] } });
     if (pending >= L.pendingPerTarget) return res.status(429).json({ error: 'TOO_MANY_PENDING' });
     const m = await Match.create({
       ...baseValues(req, c, 'challenge'),
@@ -448,6 +468,7 @@ function createPlay({ getModels, getEngines, indexFile, now = Date.now, limits =
   async function setStatus(m, from, values) {
     const [n] = await models().Match.update({ ...values, version: m.version + 1 }, { where: { id: m.id, status: from, version: m.version } });
     await m.reload();
+    settle(m);
     return n;
   }
 
@@ -509,6 +530,7 @@ function createPlay({ getModels, getEngines, indexFile, now = Date.now, limits =
       where: { [Op.or]: [{ seat0Key: key }, { seat1Key: key }] },
       order: [['updatedAt', 'DESC']], limit: 100,
     });
+    rows.forEach(settle);
     const shape = m => {
       const seat = m.seat0Key === key ? 0 : 1;
       const state = JSON.parse(m.state);
@@ -531,7 +553,7 @@ function createPlay({ getModels, getEngines, indexFile, now = Date.now, limits =
 
   apiRouter.use(errorHandler);
 
-  return { guestRouter, apiRouter, streams, _internal: { sanitizeGuestName, escapeHtml } };
+  return { guestRouter, apiRouter, streams, startSweeper, stopSweeper, expireStale, _internal: { sanitizeGuestName, escapeHtml } };
 }
 
 module.exports = { createPlay, sanitizeGuestName, escapeHtml, SEAT_COOKIE, DEFAULT_LIMITS };

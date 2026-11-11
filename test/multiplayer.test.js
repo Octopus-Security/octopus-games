@@ -332,6 +332,21 @@ test('expiry: an unclaimed invite and an unanswered challenge lapse after 7 days
   clock = T0;
 });
 
+test('expiry sweep is throttled, but a read inside the throttle window still sees a lapsed match as expired', async () => {
+  clock = T0 + 20 * 24 * 3600 * 1000;
+  const { tok } = await invite('zed');
+  const other = (await invite('zoe')).tok;
+  const DAY = 24 * 3600 * 1000;
+  clock += 7 * DAY - 10000;
+  assert.strictEqual((await call('GET', `/play/i/${other}/info`)).json.status, 'open'); // sweep runs here
+  clock += 15000;                                                                       // lapsed, sweep not due
+  const info = await call('GET', `/play/i/${tok}/info`);
+  assert.strictEqual(info.json.status, 'expired');
+  assert.strictEqual(info.json.seatOpen, false);
+  assert.strictEqual((await call('POST', `/play/i/${tok}/claim`, { body: { name: 'Late' } })).status, 410);
+  clock = T0;
+});
+
 test('guest names: 1-24 chars, trimmed, whitelist; markup is refused, output is never raw HTML', async () => {
   assert.strictEqual(sanitizeGuestName('  Sam   Jones '), 'Sam Jones');
   assert.strictEqual(sanitizeGuestName('x'.repeat(24)).length, 24);

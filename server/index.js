@@ -348,6 +348,7 @@ app.get('*', (req, res) => {
 });
 
 initDb().then(() => {
+  play.startSweeper();
   app.listen(PORT, () => console.log(`Octopus Games running on :${PORT}`));
 }).catch(err => {
   console.error('DB init failed:', err);
