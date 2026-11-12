@@ -12,6 +12,11 @@ const wikiRouter  = require('./routes/wiki');
 const craftingRouter = require('./routes/crafting');
 
 const app = express();
+// Security headers + no-store for signed-in answers + message-free error logs (HIPAA map, 2026-11-12 sweep).
+const safeguards = require('./safeguards');
+app.disable('x-powered-by');
+app.use(safeguards.secureHeaders());
+app.use(safeguards.noStoreWhenSignedIn());
 const PORT = process.env.PORT || 3013;
 const AUTH_INTERNAL_URL = process.env.AUTH_SERVICE_URL || 'http://octopus-auth:3002';
 const AUTH_EXTERNAL_URL = process.env.AUTH_EXTERNAL_URL || '';
