@@ -1,4 +1,5 @@
 'use strict';
+const safeguards = require('../safeguards');
 /**
  * Two-seat turn-based matches: challenges, invite links, guests, live updates.
  * Read MULTIPLAYER.md before changing anything here; the access rules are the
@@ -139,7 +140,7 @@ function createPlay({ getModels, getEngines, indexFile, now = Date.now, limits =
   let sweeper = null;
   function startSweeper() {
     if (sweeper) return;
-    sweeper = setInterval(() => { expireStale({ force: true }).catch(e => console.error('[play] sweep', e && e.message)); }, SWEEP_MS);
+    sweeper = setInterval(() => { expireStale({ force: true }).catch(e => console.error('[play] sweep', safeguards.safeError(e))); }, SWEEP_MS);
     if (sweeper.unref) sweeper.unref();
   }
   const stopSweeper = () => { if (sweeper) { clearInterval(sweeper); sweeper = null; } };
@@ -191,7 +192,7 @@ function createPlay({ getModels, getEngines, indexFile, now = Date.now, limits =
   const notFound = res => res.status(404).json({ error: 'NOT_FOUND' });
   const sendPage = (res) => res.sendFile(indexFile);
   const errorHandler = (err, _req, res, _next) => {
-    console.error('[play]', err && err.message); // message only: never a request, header or token
+    console.error('[play]', safeguards.safeError(err)); // message only: never a request, header or token
     if (!res.headersSent) res.status(500).json({ error: 'SERVER_ERROR' });
   };
 
@@ -266,7 +267,7 @@ function createPlay({ getModels, getEngines, indexFile, now = Date.now, limits =
     try {
       await MatchMove.create({ matchId: m.id, ply: m.version + 1, seat: actor.seat,
         move: JSON.stringify(body.move), events: JSON.stringify(result.events || []) });
-    } catch (e) { console.error('[play] move log failed:', e.message); }
+    } catch (e) { console.error('[play] move log failed:', safeguards.safeError(e)); }
     await m.reload();
     broadcast(m);
     res.json(await present(m, actor, req));
