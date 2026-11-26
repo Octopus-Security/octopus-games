@@ -7,6 +7,7 @@ const { createPlay } = require('./multiplayer/service');
 const { loadEngines } = require('./multiplayer/engines');
 const { BUILD, STARTED_AT } = require('./build');
 const { createAppGate } = require('./appAccess');
+const { safeParam } = require('./proxy-params');
 const gamesRouter = require('./routes/games');
 const wikiRouter  = require('./routes/wiki');
 const craftingRouter = require('./routes/crafting');
@@ -262,8 +263,10 @@ async function proxyCortex(req, res, cortexPath) {
 
 // Token-gated short links: /m/:token → cortex resolves and redirects to /modpack/:id
 app.get('/m/:token', async (req, res) => {
+  const token = safeParam('token', req.params.token);
+  if (!token) return res.status(404).send('Not found');
   try {
-    const r = await axios.get(`${CORTEX_URL}/m/${req.params.token}`, {
+    const r = await axios.get(`${CORTEX_URL}/m/${token}`, {
       maxRedirects: 0,
       validateStatus: () => true,
       timeout: 5000,
@@ -279,10 +282,19 @@ app.get('/m/:token', async (req, res) => {
 });
 
 // Modpack join page
-app.get('/modpack/:serverId', (req, res) => proxyCortex(req, res, `/modpack/${req.params.serverId}`));
+app.get('/modpack/:serverId', (req, res) => {
+  const serverId = safeParam('serverId', req.params.serverId);
+  if (!serverId) return res.status(404).send('Not found');
+  return proxyCortex(req, res, `/modpack/${serverId}`);
+});
 
 // Mod file downloads
-app.get('/modpack/:serverId/download/:modId', (req, res) => proxyCortex(req, res, `/modpack/${req.params.serverId}/download/${req.params.modId}`));
+app.get('/modpack/:serverId/download/:modId', (req, res) => {
+  const serverId = safeParam('serverId', req.params.serverId);
+  const modId = safeParam('modId', req.params.modId);
+  if (!serverId || !modId) return res.status(404).send('Not found');
+  return proxyCortex(req, res, `/modpack/${serverId}/download/${modId}`);
+});
 
 // ── Arcade game visibility (admin controls which games guests can access) ─────
 
@@ -317,10 +329,12 @@ app.patch('/api/admin/arcade-visibility', requireAdmin, async (req, res) => {
 // ── Game server visibility (proxied through to cortex) ────────────────────────
 
 app.patch('/api/admin/game-servers/:id/visibility', requireAdmin, async (req, res) => {
+  const serverId = safeParam('serverId', req.params.id);
+  if (!serverId) return res.status(404).json({ error: 'Not found' });
   try {
     const { visibility, allowedUsers } = req.body || {};
     const r = await axios.patch(
-      `${CORTEX_URL}/api/internal/game-servers/${req.params.id}/visibility`,
+      `${CORTEX_URL}/api/internal/game-servers/${serverId}/visibility`,
       { visibility, allowedUsers },
       { headers: { 'x-internal-secret': INTERNAL_SECRET }, timeout: 8000 }
     );
